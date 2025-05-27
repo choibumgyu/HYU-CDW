@@ -13,9 +13,7 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
     { href: "/", icon: Home, text: "홈" },
-    { href: "/analysis", icon: BarChart2, text: "데이터 분석" },
     { href: "/patients", icon: Users, text: "환자 관리" },
-    { href: "/cohort-result", icon: FolderPlus, text: "코호트 결과" }, // ✅ 경로 + 이름 수정
     { href: "/ai-chat", icon: MessageSquare, text: "AI 챗봇" },
     { href: "/settings", icon: Settings, text: "설정" },
 ];

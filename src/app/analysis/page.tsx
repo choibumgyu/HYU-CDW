@@ -140,7 +140,7 @@ export default function AnalysisPage() {
         const header = Object.keys(filteredData[0]);
         const rows = filteredData.map(row => header.map(h => `"${String(row[h] ?? "")}"`).join(","));
         const csvContent = [header.join(","), ...rows].join("\n");
-
+        console.log("📊 filteredData 개수:", filteredData.length);
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
 

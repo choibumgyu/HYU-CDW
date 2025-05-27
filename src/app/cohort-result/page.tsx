@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import DataTable from "@/components/charts/DataTable";
 
+import BackToAiButton from "@/components/ui/BackToAiButton";
+
 interface RowData {
     [key: string]: string | number | null;
 }
@@ -79,6 +81,7 @@ export default function CohortResultPage() {
 
     return (
         <div className="max-w-6xl mx-auto p-6">
+            <BackToAiButton />
             <h1 className="text-2xl font-bold mb-4">🧬 코호트 결과</h1>
             {loading && <p className="text-gray-500">데이터 불러오는 중...</p>}
             {error && <p className="text-red-600 font-semibold">{error}</p>}
