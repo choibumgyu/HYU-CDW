@@ -8,25 +8,15 @@ interface ChatMessage {
     message: string;
 }
 
-function extractSQL(text: string): string | null {
-    // SELECT ~ FROM ~ ; 로 끝나는 첫 SQL 구문 추출
-    const match = text.match(/(select[\s\S]+?from[\s\S]+?;)/i);
-    return match ? match[1].trim() : null;
-}
-
 export default function AiChatPage() {
     const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
-    const [sqlPerMessage, setSqlPerMessage] = useState<{ [index: number]: string }>({});
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
     const router = useRouter();
 
     useEffect(() => {
         const saved = sessionStorage.getItem("chat_history");
         setChatHistory(saved ? JSON.parse(saved) : []);
-
-        const savedSql = sessionStorage.getItem("sql_per_message");
-        setSqlPerMessage(savedSql ? JSON.parse(savedSql) : {});
     }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -39,7 +29,7 @@ export default function AiChatPage() {
         const response = await fetch("/api/ask-ai", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ question: input }),
+            body: JSON.stringify({ question: input })
         });
         const data = await response.json();
         console.log("🔍 응답 데이터:", JSON.stringify(data.debug, null, 2));
@@ -53,14 +43,6 @@ export default function AiChatPage() {
         const finalHistory = [...newHistory, botMessage];
         setChatHistory(finalHistory);
         sessionStorage.setItem("chat_history", JSON.stringify(finalHistory));
-
-        const extracted = extractSQL(botMessageText);
-        console.log(extracted);
-        if (extracted) {
-            const updatedSql = { ...sqlPerMessage, [finalHistory.length - 1]: extracted };
-            setSqlPerMessage(updatedSql);
-            sessionStorage.setItem("sql_per_message", JSON.stringify(updatedSql));
-        }
 
         setInput("");
     };
@@ -92,16 +74,16 @@ export default function AiChatPage() {
                     >
                         <strong>{chat.role === "user" ? "👤 나" : "🤖 GPT"}</strong>
                         <div className="mt-1">{chat.message}</div>
-                        {chat.role === "bot" /*&& sqlPerMessage[idx]*/ && (
+                        {chat.role === "bot" && (
                             <div className="mt-3 flex gap-3">
                                 <button
-                                    onClick={() => handleRoute("analysis", sqlPerMessage[idx])}
+                                    onClick={() => handleRoute("analysis", chat.message)}
                                     className="px-3 py-1 rounded bg-indigo-600 text-white text-sm"
                                 >
                                     📊 시각화로 보기
                                 </button>
                                 <button
-                                    onClick={() => handleRoute("cohort-result", sqlPerMessage[idx])}
+                                    onClick={() => handleRoute("cohort-result", chat.message)}
                                     className="px-3 py-1 rounded bg-green-600 text-white text-sm"
                                 >
                                     🧬 코호트 결과 보기
@@ -133,9 +115,7 @@ export default function AiChatPage() {
                 <button
                     onClick={() => {
                         setChatHistory([]);
-                        setSqlPerMessage({});
                         sessionStorage.removeItem("chat_history");
-                        sessionStorage.removeItem("sql_per_message");
                     }}
                     className="text-sm text-red-600 hover:underline"
                 >

@@ -4,6 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import 'echarts-gl';
 import * as echarts from "echarts";
 
+import DataTable from "@/components/charts/DataTable";
+import BarChart from "@/components/charts/BarChart";
+import LineChart from "@/components/charts/LineChart";
+import ScatterChart from "@/components/charts/ScatterChart";
+import Bar3dChart from "@/components/charts/Bar3dChart";
+import PieChart from "@/components/charts/PieChart";
+
+import BackToAiButton from "@/components/ui/BackToAiButton";
+
+
 interface ChartRow {
     [key: string]: string | number | null;
 }
@@ -106,61 +116,6 @@ export default function AnalysisPage() {
         };
     };
 
-    useEffect(() => {
-        if (!currentChartType || currentChartType === "table") return;
-        renderChart(currentChartType);
-    }, [xAxis, yAxis, zAxis, limit]);
-
-    const renderChart = (type: string) => {
-        if (!chartRef.current || !filteredData.length) return;
-        if (echarts.getInstanceByDom(chartRef.current)) {
-            echarts.dispose(chartRef.current);
-        }
-
-        const chart = echarts.init(chartRef.current);
-        setCurrentChartType(type);
-
-        if (type === "bar3D") {
-            const data = filteredData.map(row => [row[xAxis], row[yAxis], isNaN(Number(row[zAxis])) ? 0 : Number(row[zAxis])]);
-            chart.setOption({
-                tooltip: {
-                    formatter: (params: any) => `${xAxis}: ${params.value[0]}<br>${yAxis}: ${params.value[1]}<br>${zAxis}: ${params.value[2]}`,
-                },
-                title: { text: "3D bar 그래프", left: "center" },
-                xAxis3D: { type: "category", name: xAxis },
-                yAxis3D: { type: "category", name: yAxis },
-                zAxis3D: { type: "value", name: zAxis },
-                grid3D: { boxWidth: 100, boxDepth: 80, viewControl: { projection: "orthographic", autoRotate: true } },
-                series: [{ type: "bar3D", data: data.map(item => ({ value: item })) }]
-            });
-        } else {
-            const xData = filteredData.map(row => row[xAxis]);
-            const yData = filteredData.map(row => isNaN(Number(row[yAxis])) ? 0 : Number(row[yAxis]));
-
-            chart.setOption({
-                title: { text: `${type} 그래프`, left: "center" },
-                xAxis: { type: "category", data: xData, name: xAxis },
-                yAxis: { type: "value", name: yAxis },
-                tooltip: { trigger: "axis" },
-                series: [{ type, data: yData }]
-            });
-        }
-    };
-
-    const renderTable = (data: ChartRow[]) => {
-        if (!chartRef.current) return;
-        const validColumns = columnNames.filter(key => data.some(row => row[key] !== "N/A"));
-
-        const tableHtml = `
-      <table class="w-full border">
-        <thead><tr>${validColumns.map(key => `<th class='border px-2 py-1'>${key}</th>`).join("")}</tr></thead>
-        <tbody>${data.map(row => `<tr>${validColumns.map(key => `<td class='border px-2 py-1'>${row[key]}</td>`).join("")}</tr>`).join("")}</tbody>
-      </table>
-    `;
-
-        chartRef.current.innerHTML = tableHtml;
-    };
-
     const downloadChartImage = () => {
         const chartDom = document.getElementById("chart");
         if (!chartDom) return;
@@ -214,6 +169,7 @@ export default function AnalysisPage() {
 
     return (
         <div className="font-sans text-center">
+            <BackToAiButton />
             <h1 className="text-3xl font-bold mt-6">CDW 데이터 시각화</h1>
 
             <div className="w-4/5 mx-auto my-4 flex flex-col items-end bg-white p-4 rounded-lg">
@@ -226,9 +182,10 @@ export default function AnalysisPage() {
                 />
                 <button
                     onClick={() => fetchChartData()}
-                    className="px-4 py-2 border rounded bg-gray-100 hover:bg-gray-200 active:bg-gray-300"
+                    title="쿼리 실행"
+                    className="w-10 h-10 flex items-center justify-center text-xl border rounded-full bg-gray-100 hover:bg-gray-200 active:bg-gray-300"
                 >
-                    쿼리 실행
+                    ▶
                 </button>
             </div>
 
@@ -238,44 +195,59 @@ export default function AnalysisPage() {
                 </div>
             )}
 
-            <div className="flex justify-center gap-4 flex-wrap">
-                {["xAxis", "yAxis", currentChartType === "bar3D" ? "zAxis" : null].filter(Boolean).map(axis => {
-                    const value = axis === "xAxis" ? xAxis : axis === "yAxis" ? yAxis : zAxis;
-                    return (
-                        <div
-                            key={axis!}
-                            className="relative"
-                            onMouseEnter={() => setHoveredAxis(axis!)}
-                            onMouseLeave={() => setHoveredAxis(null)}
-                        >
-                            <select
-                                value={value}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    if (axis === "xAxis") setXAxis(val);
-                                    else if (axis === "yAxis") setYAxis(val);
-                                    else setZAxis(val);
-                                }}
-                                className="border rounded px-3 py-2"
+            <div className="flex justify-center gap-4 flex-wrap mt-4">
+                {["xAxis", "yAxis", currentChartType === "bar3D" ? "zAxis" : null]
+                    .filter(Boolean)
+                    .map((axis) => {
+                        const value =
+                            axis === "xAxis" ? xAxis : axis === "yAxis" ? yAxis : zAxis;
+                        const setter =
+                            axis === "xAxis" ? setXAxis : axis === "yAxis" ? setYAxis : setZAxis;
+                        const label = axis!.charAt(0).toUpperCase(); // X, Y, Z
+                        const tooltip = `${label}축 선택`;
+
+                        return (
+                            <div
+                                key={axis}
+                                className="relative inline-block w-24 text-center"
+                                title={tooltip}
+                                onMouseEnter={() => setHoveredAxis(axis)}
+                                onMouseLeave={() => setHoveredAxis(null)}
                             >
-                                <option value="">{axis?.charAt(0)}축 선택</option>
-                                {columnNames.map((name) => (
-                                    <option key={name} value={name}>{name}</option>
-                                ))}
-                            </select>
-                            {hoveredAxis === axis && value && (
-                                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-10">
-                                    {renderSummaryTooltip(value)}
+                                <select
+                                    value={value}
+                                    onChange={(e) => setter(e.target.value)}
+                                    className="appearance-none w-24 border border-gray-300 rounded-full px-4 py-2 pr-10 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                                >
+                                    <option value="" className="text-left">{label}</option>
+                                    {columnNames.map((name) => (
+                                        <option key={name} value={name} className="text-left pl-2 truncate">
+                                            {name}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                {/* ▼ 화살표 */}
+                                <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-gray-400">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                                    </svg>
                                 </div>
-                            )}
-                        </div>
-                    );
-                })}
+
+                                {/* ✅ 요약 툴팁 추가 */}
+                                {hoveredAxis === axis && value && (
+                                    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50">
+                                        {renderSummaryTooltip(value)}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
             </div>
+
 
             <div className="my-6 flex justify-center">
                 <div className="text-left">
-                    <h3 className="font-semibold">🔹 상위 데이터 개수</h3>
                     <input
                         type="number"
                         min={1}
@@ -284,43 +256,114 @@ export default function AnalysisPage() {
                             const value = parseInt(e.target.value);
                             setLimit(isNaN(value) ? undefined : value);
                         }}
-                        className="border rounded px-3 py-1 ml-2"
-                        placeholder="숫자 입력"
+                        className="border rounded px-2 py-1 w-24"
+                        placeholder="Top N"
+                        title="상위 데이터 제한"
                     />
-                    <span className="ml-4 text-gray-500">
-                        총 {globalData.length}개 데이터 조회됨
-                    </span>
+
+                    {globalData.length > 0 && (
+                        <p className="text-xs text-gray-400 mt-1 text-center">
+                            총 {globalData.length}개 데이터
+                        </p>
+                    )}
                 </div>
             </div>
 
-            <h3 className="font-semibold">📊 원하는 시각화 선택:</h3>
-            <div className="flex justify-center flex-wrap gap-4 mt-2">
-                <ChartButton label={<img src="/images/bar.png" alt="Bar Chart" />} onClick={() => renderChart("bar")} />
-                <ChartButton label={<img src="/images/line.png" alt="Line Chart" />} onClick={() => renderChart("line")} />
-                <ChartButton label={<img src="/images/scatter.png" alt="Scatter Chart" />} onClick={() => renderChart("scatter")} />
-                <ChartButton label={<img src="/images/bar.png" alt="bar3D Chart" />} onClick={() => renderChart("bar3D")} />
-                <ChartButton label={<img src="/images/pie.png" alt="pie Chart" />} onClick={() => renderChart("pie")} />
-                <ChartButton label={<img src="/images/table.png" alt="Table Chart" />} onClick={() => renderTable(filteredData)} />
+            <div className="flex justify-center flex-wrap gap-4 mt-8">
+                <ChartButton
+                    label={<img src="/images/bar.png" title="Bar Chart" className="w-8 h-8" />}
+                    onClick={() => {
+                        setCurrentChartType("bar");
+                    }}
+                />
+                <ChartButton
+                    label={<img src="/images/line.png" title="Line Chart" className="w-8 h-8" />}
+                    onClick={() => {
+                        setCurrentChartType("line");
+                    }}
+                />
+                <ChartButton
+                    label={<img src="/images/scatter.png" title="Scatter Chart" className="w-8 h-8" />}
+                    onClick={() => {
+                        setCurrentChartType("scatter");
+                    }}
+                />
+                <ChartButton
+                    label={<img src="/images/bar.png" title="3D Bar Chart" className="w-8 h-8" />}
+                    onClick={() => {
+                        setCurrentChartType("bar3D");
+                    }}
+                />
+                <ChartButton
+                    label={<img src="/images/pie.png" title="Pie Chart" className="w-8 h-8" />}
+                    onClick={() => {
+                        setCurrentChartType("pie");
+                    }}
+                />
+                <ChartButton
+                    label={<img src="/images/table.png" title="Table View" className="w-8 h-8" />}
+                    onClick={() => {
+                        setCurrentChartType("table");
+                    }}
+                />
             </div>
 
-            <div ref={chartRef} id="chart" className="relative w-4/5 h-[500px] mx-auto my-4" />
+            {filteredData.length > 0 ? (
+                currentChartType === "bar" ? (
+                    <BarChart xAxis={xAxis} yAxis={yAxis} data={filteredData} />
+                ) : currentChartType === "line" ? (
+                    <LineChart xAxis={xAxis} yAxis={yAxis} data={filteredData} />
+                ) :currentChartType === "scatter" ? (
+                    <ScatterChart xAxis={xAxis} yAxis={yAxis} data={filteredData} />
+                ) : currentChartType === "pie" ? (
+                    <PieChart xAxis={xAxis} yAxis={yAxis} data={filteredData} />
+                ) : currentChartType === "bar3D" ? (
+                    <Bar3dChart
+                        xAxis={xAxis}
+                        yAxis={yAxis}
+                        zAxis={zAxis}
+                        data={filteredData}
+                    />
+                ) : currentChartType === "table" ? (
+                    <DataTable data={filteredData} columns={columnNames} />
+                ) : (
+                    <div
+                        ref={chartRef}
+                        id="chart"
+                        className="relative w-4/5 h-[500px] mx-auto my-4"
+                    />
+                )
+            ) : (
+                <div className="w-4/5 h-[400px] mx-auto mt-8 flex items-center justify-center text-gray-500 text-sm">
+                    <div className="text-center">
+                        <div className="animate-pulse text-4xl mb-2">📭</div>
+                        <p className="text-base font-semibold">조회된 데이터가 없습니다</p>
+                        <p className="text-sm text-gray-600 font-medium mt-1">
+                            SQL을 수정하거나 축을 선택하세요
+                        </p>
+                    </div>
+                </div>
+            )}
 
-            <div className="absolute top-4 right-6 flex flex-row gap-2 z-20">
+
+            <div className="fixed top-[80px] right-6 flex gap-2 z-30">
                 <button
                     onClick={downloadChartImage}
-                    className="px-4 py-2 text-white rounded"
-                    style={{ backgroundColor: 'rgb(0, 188, 212)' }}
+                    title="그래프 다운로드"
+                    className="flex items-center gap-1 px-3 py-1 text-sm bg-cyan-500 hover:bg-cyan-600 text-white rounded-full shadow"
                 >
-                    그래프 다운로드
+                    📈 <span className="hidden sm:inline">차트</span>
                 </button>
                 <button
                     onClick={downloadCSV}
-                    className="px-4 py-2 text-white rounded"
-                    style={{ backgroundColor: 'rgb(0, 188, 212)' }}
+                    title="CSV 다운로드"
+                    className="flex items-center gap-1 px-3 py-1 text-sm bg-cyan-500 hover:bg-cyan-600 text-white rounded-full shadow"
                 >
-                    테이블 CSV 다운로드
+                    📄 <span className="hidden sm:inline">CSV</span>
                 </button>
             </div>
+
+
         </div>
     );
 }

@@ -1,54 +1,70 @@
-import React, { useEffect, useRef } from 'react';
-import * as echarts from 'echarts';
-import 'echarts-gl';
+import React, { useEffect, useRef } from "react";
+import * as echarts from "echarts";
+import "echarts-gl";
 
-interface Bar3DChartProps {
-    data: { x: string | number; y: string | number; z: number }[];
-    zKey: string;
+interface ChartRow {
+    [key: string]: string | number | null;
 }
 
-const Bar3DChart: React.FC<Bar3DChartProps> = ({ data, zKey }) => {
+interface Bar3DChartProps {
+    xAxis: string;
+    yAxis: string;
+    zAxis: string;
+    data: ChartRow[];
+}
+
+export default function Bar3DChart({ xAxis, yAxis, zAxis, data }: Bar3DChartProps) {
     const chartRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!chartRef.current || !data.length) return;
+        if (!chartRef.current || !xAxis || !yAxis || !zAxis || data.length === 0) return;
+
+        echarts.dispose(chartRef.current);
         const chart = echarts.init(chartRef.current);
 
+        const seriesData = data.map((row) => [
+            row[xAxis],
+            row[yAxis],
+            isNaN(Number(row[zAxis])) ? 0 : Number(row[zAxis])
+        ]);
+
         chart.setOption({
-            tooltip: {},
-            title: { text: '3D 막대그래프', left: 'center' },
-            xAxis3D: { type: 'category', name: 'X' },
-            yAxis3D: { type: 'category', name: 'Y' },
-            zAxis3D: { type: 'value', name: zKey },
+            tooltip: {
+                formatter: (params: any) =>
+                    `${xAxis}: ${params.value[0]}<br>${yAxis}: ${params.value[1]}<br>${zAxis}: ${params.value[2]}`,
+            },
+            title: {
+                text: "3D Bar Chart",
+                left: "center",
+            },
+            xAxis3D: {
+                type: "category",
+                name: xAxis,
+            },
+            yAxis3D: {
+                type: "category",
+                name: yAxis,
+            },
+            zAxis3D: {
+                type: "value",
+                name: zAxis,
+            },
             grid3D: {
                 boxWidth: 100,
                 boxDepth: 80,
-                viewControl: { projection: 'orthographic' }
+                viewControl: {
+                    projection: "orthographic",
+                    autoRotate: true,
+                },
             },
             series: [
                 {
-                    type: 'bar3D',
-                    data: data.map((item) => ({ value: [item.x, item.y, item.z] })),
-                    shading: 'lambert',
-                    label: { show: false },
-                    emphasis: {
-                        label: { show: true, fontSize: 12, color: '#fff' },
-                        itemStyle: { color: '#900' }
-                    }
-                }
-            ]
+                    type: "bar3D",
+                    data: seriesData.map((item) => ({ value: item })),
+                },
+            ],
         });
-
-        const resizeObserver = new ResizeObserver(() => chart.resize());
-        resizeObserver.observe(chartRef.current);
-
-        return () => {
-            chart.dispose();
-            resizeObserver.disconnect();
-        };
-    }, [data, zKey]);
+    }, [xAxis, yAxis, zAxis, data]);
 
     return <div ref={chartRef} className="w-full h-[500px]" />;
-};
-
-export default Bar3DChart;
+}

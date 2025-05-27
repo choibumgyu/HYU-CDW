@@ -1,22 +1,50 @@
-import React from 'react';
-import ReactECharts from 'echarts-for-react';
+import React, { useEffect, useRef } from "react";
+import * as echarts from "echarts";
 
-interface Props {
-  data: any[];
-  xKey: string;
-  yKey: string;
+interface ChartRow {
+  [key: string]: string | number | null;
 }
 
-const BarChart: React.FC<Props> = ({ data, xKey, yKey }) => {
-  const option = {
-    title: { text: '막대 차트', left: 'center' },
-    tooltip: {},
-    xAxis: { type: 'category', data: data.map(d => d[xKey]) },
-    yAxis: { type: 'value' },
-    series: [{ type: 'bar', data: data.map(d => Number(d[yKey]) || 0) }],
-  };
+interface BarChartProps {
+  xAxis: string;
+  yAxis: string;
+  data: ChartRow[];
+}
 
-  return <ReactECharts option={option} style={{ height: 400 }} />;
-};
+export default function BarChart({ xAxis, yAxis, data }: BarChartProps) {
+  const chartRef = useRef<HTMLDivElement>(null);
 
-export default BarChart;
+  useEffect(() => {
+    if (!chartRef.current || !xAxis || !yAxis || data.length === 0) return;
+
+    echarts.dispose(chartRef.current);
+    const chart = echarts.init(chartRef.current);
+
+    const xData = data.map((row) => row[xAxis]);
+    const yData = data.map((row) => {
+      const val = Number(row[yAxis]);
+      return isNaN(val) ? 0 : val;
+    });
+
+    chart.setOption({
+      tooltip: { trigger: "axis" },
+      xAxis: {
+        type: "category",
+        data: xData,
+        name: xAxis,
+      },
+      yAxis: {
+        type: "value",
+        name: yAxis,
+      },
+      series: [
+        {
+          type: "bar",
+          data: yData,
+        },
+      ],
+    });
+  }, [xAxis, yAxis, data]);
+
+  return <div ref={chartRef} className="w-full h-[500px]" />;
+}

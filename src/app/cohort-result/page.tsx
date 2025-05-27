@@ -82,7 +82,9 @@ export default function CohortResultPage() {
             <h1 className="text-2xl font-bold mb-4">🧬 코호트 결과</h1>
             {loading && <p className="text-gray-500">데이터 불러오는 중...</p>}
             {error && <p className="text-red-600 font-semibold">{error}</p>}
-            {!loading && !error && data.length > 0 && <DataTable data={data} />}
+            {!loading && !error && data.length > 0 && (
+                <DataTable data={data} columns={Object.keys(data[0])} />
+            )}
         </div>
     );
 }

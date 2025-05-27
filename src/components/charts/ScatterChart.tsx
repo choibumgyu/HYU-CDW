@@ -1,46 +1,49 @@
-import React, { useEffect, useRef } from 'react';
-import * as echarts from 'echarts';
+import React, { useEffect, useRef } from "react";
+import * as echarts from "echarts";
 
-interface ScatterChartProps {
-    data: { [key: string]: string | number | null }[];
-    xKey: string;
-    yKey: string;
+interface ChartRow {
+    [key: string]: string | number | null;
 }
 
-const ScatterChart: React.FC<ScatterChartProps> = ({ data, xKey, yKey }) => {
+interface ScatterChartProps {
+    xAxis: string;
+    yAxis: string;
+    data: ChartRow[];
+}
+
+export default function ScatterChart({ xAxis, yAxis, data }: ScatterChartProps) {
     const chartRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!chartRef.current || data.length === 0) return;
+        if (!chartRef.current || !xAxis || !yAxis || data.length === 0) return;
 
+        echarts.dispose(chartRef.current);
         const chart = echarts.init(chartRef.current);
 
-        const seriesData = data.map((d) => [d[xKey], d[yKey]]);
+        const seriesData = data.map((row) => {
+            const xVal = row[xAxis];
+            const yVal = Number(row[yAxis]);
+            return [xVal, isNaN(yVal) ? 0 : yVal];
+        });
 
         chart.setOption({
-            title: { text: '산점도 차트', left: 'center' },
-            tooltip: {},
-            xAxis: { type: 'value', name: xKey },
-            yAxis: { type: 'value', name: yKey },
+            tooltip: { trigger: "item" },
+            xAxis: {
+                type: "category",
+                name: xAxis,
+            },
+            yAxis: {
+                type: "value",
+                name: yAxis,
+            },
             series: [
                 {
-                    type: 'scatter',
+                    type: "scatter",
                     data: seriesData,
-                    symbolSize: 10,
                 },
             ],
         });
-
-        const resizeObserver = new ResizeObserver(() => chart.resize());
-        resizeObserver.observe(chartRef.current);
-
-        return () => {
-            chart.dispose();
-            resizeObserver.disconnect();
-        };
-    }, [data, xKey, yKey]);
+    }, [xAxis, yAxis, data]);
 
     return <div ref={chartRef} className="w-full h-[500px]" />;
-};
-
-export default ScatterChart;
+}
