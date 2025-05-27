@@ -30,6 +30,7 @@ export default function AnalysisPage() {
     const [currentChartType, setCurrentChartType] = useState<string | null>(null);
     const [hoveredAxis, setHoveredAxis] = useState<string | null>(null);
     const [error, setError] = useState<string>("");
+    const [chartInstance, setChartInstance] = useState<echarts.ECharts | null>(null);
 
     const fetchChartData = async (customQuery?: string) => {
         try {
@@ -117,14 +118,11 @@ export default function AnalysisPage() {
     };
 
     const downloadChartImage = () => {
-        const chartDom = document.getElementById("chart");
-        if (!chartDom) return;
-        const instance = echarts.getInstanceByDom(chartDom);
-        if (!instance) {
+        if (!chartInstance) {
             alert("그래프가 먼저 생성되어야 합니다.");
             return;
         }
-        const base64 = instance.getDataURL({ type: "png", pixelRatio: 2 });
+        const base64 = chartInstance.getDataURL({ type: "png", pixelRatio: 2 });
         const link = document.createElement("a");
         link.href = base64;
         link.download = "chart.png";
@@ -204,24 +202,27 @@ export default function AnalysisPage() {
                         const setter =
                             axis === "xAxis" ? setXAxis : axis === "yAxis" ? setYAxis : setZAxis;
                         const label = axis!.charAt(0).toUpperCase(); // X, Y, Z
-                        const tooltip = `${label}축 선택`;
 
                         return (
                             <div
                                 key={axis}
-                                className="relative inline-block w-24 text-center"
-                                title={tooltip}
-                                onMouseEnter={() => setHoveredAxis(axis)}
+                                className="relative inline-block w-auto min-w-[8rem] max-w-[20rem]"
+                                title={`${label}축 선택`}
+                                onMouseEnter={() => setHoveredAxis(axis!)}
                                 onMouseLeave={() => setHoveredAxis(null)}
                             >
                                 <select
                                     value={value}
                                     onChange={(e) => setter(e.target.value)}
-                                    className="appearance-none w-24 border border-gray-300 rounded-full px-4 py-2 pr-10 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                                    className="appearance-none w-full border border-gray-300 rounded-full px-4 py-2 pr-10 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
                                 >
-                                    <option value="" className="text-left">{label}</option>
+                                    <option value="">{label}</option>
                                     {columnNames.map((name) => (
-                                        <option key={name} value={name} className="text-left pl-2 truncate">
+                                        <option
+                                            key={name}
+                                            value={name}
+                                            className="whitespace-normal break-words text-left"
+                                        >
                                             {name}
                                         </option>
                                     ))}
@@ -234,7 +235,7 @@ export default function AnalysisPage() {
                                     </svg>
                                 </div>
 
-                                {/* ✅ 요약 툴팁 추가 */}
+                                {/* 요약 툴팁 */}
                                 {hoveredAxis === axis && value && (
                                     <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50">
                                         {renderSummaryTooltip(value)}
@@ -308,21 +309,23 @@ export default function AnalysisPage() {
                 />
             </div>
 
+
             {filteredData.length > 0 ? (
                 currentChartType === "bar" ? (
-                    <BarChart xAxis={xAxis} yAxis={yAxis} data={filteredData} />
+                    <BarChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance}/>
                 ) : currentChartType === "line" ? (
-                    <LineChart xAxis={xAxis} yAxis={yAxis} data={filteredData} />
+                    <LineChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance}/>
                 ) :currentChartType === "scatter" ? (
-                    <ScatterChart xAxis={xAxis} yAxis={yAxis} data={filteredData} />
+                    <ScatterChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance}/>
                 ) : currentChartType === "pie" ? (
-                    <PieChart xAxis={xAxis} yAxis={yAxis} data={filteredData} />
+                    <PieChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance}/>
                 ) : currentChartType === "bar3D" ? (
                     <Bar3dChart
                         xAxis={xAxis}
                         yAxis={yAxis}
                         zAxis={zAxis}
                         data={filteredData}
+                        setChartInstance={setChartInstance}
                     />
                 ) : currentChartType === "table" ? (
                     <DataTable data={filteredData} columns={columnNames} />
@@ -350,7 +353,10 @@ export default function AnalysisPage() {
                 <button
                     onClick={downloadChartImage}
                     title="그래프 다운로드"
-                    className="flex items-center gap-1 px-3 py-1 text-sm bg-cyan-500 hover:bg-cyan-600 text-white rounded-full shadow"
+                    className={`flex items-center gap-1 px-3 py-1 text-sm rounded-full shadow transition
+    ${currentChartType === "table"
+                        ? "bg-gray-300 text-white cursor-not-allowed pointer-events-none"
+                        : "bg-cyan-500 hover:bg-cyan-600 text-white"}`}
                 >
                     📈 <span className="hidden sm:inline">차트</span>
                 </button>

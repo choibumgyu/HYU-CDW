@@ -1,31 +1,29 @@
-import React, { useEffect, useRef } from "react";
+"use client";
+
+import { useEffect, useRef } from "react";
 import * as echarts from "echarts";
 import "echarts-gl";
+import { Bar3dProps } from "@/types/ChartBaseProps";
 
-interface ChartRow {
-    [key: string]: string | number | null;
-}
-
-interface Bar3DChartProps {
-    xAxis: string;
-    yAxis: string;
-    zAxis: string;
-    data: ChartRow[];
-}
-
-export default function Bar3DChart({ xAxis, yAxis, zAxis, data }: Bar3DChartProps) {
+export default function Bar3dChart({
+                                       xAxis,
+                                       yAxis,
+                                       zAxis,
+                                       data,
+                                       setChartInstance,
+                                   }: Bar3dProps) {
     const chartRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!chartRef.current || !xAxis || !yAxis || !zAxis || data.length === 0) return;
+        if (!chartRef.current) return;
 
-        echarts.dispose(chartRef.current);
         const chart = echarts.init(chartRef.current);
+        setChartInstance(chart); // ✅ 전달
 
-        const seriesData = data.map((row) => [
-            row[xAxis],
-            row[yAxis],
-            isNaN(Number(row[zAxis])) ? 0 : Number(row[zAxis])
+        const seriesData = data.map(item => [
+            item[xAxis],
+            item[yAxis],
+            isNaN(Number(item[zAxis])) ? 0 : Number(item[zAxis]),
         ]);
 
         chart.setOption({
@@ -33,22 +31,9 @@ export default function Bar3DChart({ xAxis, yAxis, zAxis, data }: Bar3DChartProp
                 formatter: (params: any) =>
                     `${xAxis}: ${params.value[0]}<br>${yAxis}: ${params.value[1]}<br>${zAxis}: ${params.value[2]}`,
             },
-            title: {
-                text: "3D Bar Chart",
-                left: "center",
-            },
-            xAxis3D: {
-                type: "category",
-                name: xAxis,
-            },
-            yAxis3D: {
-                type: "category",
-                name: yAxis,
-            },
-            zAxis3D: {
-                type: "value",
-                name: zAxis,
-            },
+            xAxis3D: { type: "category", name: xAxis },
+            yAxis3D: { type: "category", name: yAxis },
+            zAxis3D: { type: "value", name: zAxis },
             grid3D: {
                 boxWidth: 100,
                 boxDepth: 80,
@@ -60,10 +45,12 @@ export default function Bar3DChart({ xAxis, yAxis, zAxis, data }: Bar3DChartProp
             series: [
                 {
                     type: "bar3D",
-                    data: seriesData.map((item) => ({ value: item })),
+                    data: seriesData.map(item => ({ value: item })),
                 },
             ],
         });
+
+        return () => chart.dispose();
     }, [xAxis, yAxis, zAxis, data]);
 
     return <div ref={chartRef} className="w-full h-[500px]" />;
