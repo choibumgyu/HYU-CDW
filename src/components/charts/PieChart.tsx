@@ -1,29 +1,61 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as echarts from "echarts";
 import { ChartBaseProps } from "@/types/ChartBaseProps";
+import {
+    filterValidColumns,
+    detectCategoricalColumns,
+} from "@/utils/analyzeData";
 
 export default function PieChart({ xAxis, yAxis, data, setChartInstance }: ChartBaseProps) {
     const chartRef = useRef<HTMLDivElement>(null);
+    const [groupedMode, setGroupedMode] = useState(false);
+    const [manualToggle, setManualToggle] = useState(false);
+
+    const yValues = data.map((row) => Number(row[yAxis])).filter((v) => !isNaN(v));
+    const isYNumericSummable = yValues.length > 0 && new Set(yValues).size > 1;
+    const toggleDisabled = !isYNumericSummable;
 
     useEffect(() => {
-        if (!chartRef.current) return;
+        if (!manualToggle && xAxis && data.length > 0) {
+            const isXCategorical = detectCategoricalColumns(data).includes(xAxis);
+            setGroupedMode(isXCategorical);
+        }
+    }, [xAxis, data, manualToggle]);
+
+    useEffect(() => {
+        if (!chartRef.current || !xAxis || data.length === 0) return;
+
+        const validColumns = filterValidColumns(data);
+        const isXCategorical = detectCategoricalColumns(data).includes(xAxis);
+
+        if (groupedMode && (!validColumns.includes(xAxis) || !isXCategorical)) return;
 
         const chart = echarts.init(chartRef.current);
-        setChartInstance(chart); // ✅ 인스턴스 상위로 전달
+        setChartInstance(chart);
 
-        const seriesData = data.map(item => ({
-            name: item[xAxis],
-            value: Number(item[yAxis]),
-        }));
+        const seriesData = groupedMode
+            ? Object.entries(
+                data.reduce((acc, row) => {
+                    const key = row[xAxis];
+                    acc[key] = (acc[key] || 0) + 1;
+                    return acc;
+                }, {} as Record<string, number>)
+            ).map(([name, value]) => ({ name, value }))
+            : data
+                .map((row) => ({
+                    name: row[xAxis],
+                    value: Number(row[yAxis]) || 0,
+                }))
+                .filter((d) => d.name && !isNaN(d.value));
 
         chart.setOption({
             tooltip: { trigger: "item" },
             legend: { top: "bottom" },
             series: [
                 {
-                    name: yAxis,
+                    name: groupedMode ? "Count" : yAxis,
                     type: "pie",
                     radius: "60%",
                     data: seriesData,
@@ -36,7 +68,25 @@ export default function PieChart({ xAxis, yAxis, data, setChartInstance }: Chart
         });
 
         return () => chart.dispose();
-    }, [xAxis, yAxis, data]);
+    }, [xAxis, yAxis, data, groupedMode]);
 
-    return <div ref={chartRef} className="w-full h-[500px]" />;
+    return (
+        <div className="w-full h-[550px]">
+            <div className="flex justify-end mb-2 text-sm">
+                <label className="flex items-center gap-1">
+                    <input
+                        type="checkbox"
+                        checked={groupedMode}
+                        disabled={toggleDisabled}
+                        onChange={() => {
+                            setGroupedMode((prev) => !prev);
+                            setManualToggle(true);
+                        }}
+                    />
+                    그룹화된 값으로 보기
+                </label>
+            </div>
+            <div ref={chartRef} className="w-full h-[500px]" />
+        </div>
+    );
 }
