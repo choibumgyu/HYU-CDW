@@ -10,7 +10,7 @@ export default function HomePage() {
 
     // 로그인 여부 확인
     useEffect(() => {
-        const token = localStorage.getItem("token");
+        const token = sessionStorage.getItem("token");
         setIsLoggedIn(!!token);
     }, []);
 
@@ -32,7 +32,7 @@ export default function HomePage() {
         }
 
         try {
-            const token = localStorage.getItem("token");
+            const token = sessionStorage.getItem("token");
             const res = await fetch("http://localhost:8000/api/auth/me", {
                 method: "GET",
                 headers: {

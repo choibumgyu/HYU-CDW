@@ -16,7 +16,7 @@ export default function AdminPage() {
     const [searchResult, setSearchResult] = useState<User | null>(null);
     const [blockedUsers, setBlockedUsers] = useState<User[]>([]);
 
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
 
     const fetchPendingUsers = async () => {
         const response = await fetch("http://localhost:8000/api/auth/unapproved_user", {
