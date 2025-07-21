@@ -12,6 +12,8 @@ export default function SignupPage() {
 
     const [errors, setErrors] = useState<{ password?: string }>({});
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9]).{8,}$/;
+    const endpoint = process.env.NEXT_PUBLIC_OPEN_API;
+
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -30,7 +32,7 @@ export default function SignupPage() {
     };
 
     const handleSignup = async () => {
-        const response = await fetch("http://localhost:8000/api/auth/signup", {
+        const response = await fetch(endpoint+"/signup", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

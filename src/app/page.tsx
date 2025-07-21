@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 export default function HomePage() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const router = useRouter();
+    const endpoint = process.env.NEXT_PUBLIC_OPEN_API;
+
 
     // 로그인 여부 확인
     useEffect(() => {
@@ -33,7 +35,7 @@ export default function HomePage() {
 
         try {
             const token = sessionStorage.getItem("token");
-            const res = await fetch("http://localhost:8000/api/auth/me", {
+            const res = await fetch(endpoint+"/me", {
                 method: "GET",
                 headers: {
                     Authorization: `Bearer ${token}`,

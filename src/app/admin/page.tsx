@@ -18,8 +18,10 @@ export default function AdminPage() {
 
     const token = sessionStorage.getItem("token");
 
+    const endpoint = process.env.NEXT_PUBLIC_OPEN_API;
+
     const fetchPendingUsers = async () => {
-        const response = await fetch("http://localhost:8000/api/auth/unapproved_user", {
+        const response = await fetch(endpoint+"/unapproved_user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -29,7 +31,7 @@ export default function AdminPage() {
     };
 
     const fetchBlockedUsers = async () => {
-        const response = await fetch("http://localhost:8000/api/auth/blocked_users", {
+        const response = await fetch(endpoint+"/blocked_users", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -39,7 +41,7 @@ export default function AdminPage() {
     };
 
     const handleApprove = async (email: string) => {
-        const response = await fetch("http://localhost:8000/api/auth/approve", {
+        const response = await fetch(endpoint+"/approve", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -53,7 +55,7 @@ export default function AdminPage() {
     };
 
     const handleReject = async (email: string) => {
-        const response = await fetch("http://localhost:8000/api/auth/reject", {
+        const response = await fetch(endpoint+"/reject", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -67,7 +69,7 @@ export default function AdminPage() {
     };
 
     const handleUnblock = async (email: string) => {
-        const response = await fetch("http://localhost:8000/api/auth/unblock", {
+        const response = await fetch(endpoint+"/unblock", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -81,7 +83,7 @@ export default function AdminPage() {
     };
 
     const handleSearch = async () => {
-        const response = await fetch(`http://localhost:8000/api/auth/search?name=${searchName}`, {
+       const response = await fetch(`${endpoint}/search?name=${searchName}`, {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
