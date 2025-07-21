@@ -309,16 +309,11 @@ export default function AnalysisPage() {
             {filteredData.length > 0 ? (
                 currentChartType === "bar" ? (
                     <BarChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
-                    <BarChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "line" ? (
                     <LineChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "scatter" ? (
                     <ScatterChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
-                    <LineChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
-                ) : currentChartType === "scatter" ? (
-                    <ScatterChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "pie" ? (
-                    <PieChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                     <PieChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "bar3D" ? (
                     <Bar3dChart xAxis={xAxis} yAxis={yAxis} zAxis={zAxis} data={filteredData} setChartInstance={setChartInstance} />
@@ -344,16 +339,15 @@ export default function AnalysisPage() {
                 <button
                     onClick={downloadChartImage}
                     title="그래프 다운로드"
-                    className={`flex items-center gap-1 px-3 py-1 text-sm rounded-full shadow transition
-            ${currentChartType === "table"
-                        ? "bg-gray-300 text-white cursor-not-allowed pointer-events-none"
-                        : "bg-cyan-500 hover:bg-cyan-600 text-white"}`}
-    ${currentChartType === "table"
+                    className={`flex items-center gap-1 px-3 py-1 text-sm rounded-full shadow transition ${
+                        currentChartType === "table"
                             ? "bg-gray-300 text-white cursor-not-allowed pointer-events-none"
-                            : "bg-cyan-500 hover:bg-cyan-600 text-white"}`}
+                            : "bg-cyan-500 hover:bg-cyan-600 text-white"
+                    }`}
                 >
                     📈 <span className="hidden sm:inline">차트</span>
                 </button>
+
                 <button
                     onClick={downloadCSV}
                     title="CSV 다운로드"
