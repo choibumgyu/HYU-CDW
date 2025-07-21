@@ -1,109 +1,112 @@
 "use client";
-
 import { useState } from "react";
 
-export default function Page() {
+export default function SignupPage() {
     const [formData, setFormData] = useState({
         name: "",
         email: "",
-        department: "",
-        institution: "",
         password: "",
-        agree: false,
+        confirmPassword: "",
+        employeeNumber: ""
     });
 
+    const [errors, setErrors] = useState<{ password?: string }>({});
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9]).{8,}$/;
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value, type, checked } = e.target;
-        setFormData((prev) => ({
-            ...prev,
-            [name]: type === "checkbox" ? checked: value
-        }));
+        const { name, value } = e.target;
+        setFormData((prev) => ({ ...prev, [name]: value }));
+
+        if (name === "password") {
+            if (!passwordRegex.test(value)) {
+                setErrors((prev) => ({
+                    ...prev,
+                    password: "비밀번호: 8~16자의 영문 대/소문자, 숫자, 특수문자를 사용해 주세요.",
+                }));
+            } else {
+                setErrors((prev) => ({ ...prev, password: "" }));
+            }
+        }
     };
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!formData.agree) {
-            alert("약관에 동의해야 회원가입이 가능합니다.");
+
+    const handleSignup = async () => {
+        const response = await fetch("http://localhost:8000/api/auth/signup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: formData.name,
+                email: formData.email,
+                password: formData.password,
+                employeeNumber: formData.employeeNumber
+            }),
+        });
+
+        const data = await response.json();
+
+        if (response.status === 409) {
+            alert("이미 존재하는 계정의 메일입니다.");
             return;
         }
-        console.log("회원가입 요청:", formData);
-        // 회원가입 요청 처리 로직 (API 호출 등)
+
+        if (!response.ok) {
+            alert("회원가입 중 오류가 발생했습니다.");
+            return;
+        }
+
+        alert(data.message);
     };
-
     return (
-        <div className="flex justify-center items-center min-h-screen bg-gray-50">
-            <form
-                onSubmit={handleSubmit}
-                className="bg-white shadow-md rounded px-8 pt-6 pb-8 w-full max-w-md"
-            >
-                <h2 className="text-2xl font-bold mb-6 text-center">회원가입</h2>
+        <div style={{
+            minHeight: "100vh",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: "#f5f5f5"
+        }}>
+            <div style={{
+                backgroundColor: "white",
+                padding: "40px",
+                borderRadius: "12px",
+                boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
+                width: "420px",
+                textAlign: "center"
+            }}>
+                <h2 style={{ marginBottom: "16px", fontSize: "24px", color: "#333" }}>회원가입</h2>
 
-                <label className="block text-gray-700 mb-2">이름</label>
-                <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    className="mb-4 w-full px-3 py-2 border rounded"
-                    required
-                />
-
-                <label className="block text-gray-700 mb-2">이메일</label>
-                <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    className="mb-4 w-full px-3 py-2 border rounded"
-                    required
-                />
-
-                <label className="block text-gray-700 mb-2">기관명</label>
-                <select name="institution" className="mb-4 w-full px-1.5 py-2 border rounded">
-                    <option value="">기관을 선택하세요</option>
-                    <option>한양대학교병원</option>
-                    <option>한양대학교 구리병원</option>
-                </select>
-
-
-                <label className="block text-gray-700 mb-2">부서</label>
-                <input
-                    type="text"
-                    name="department"
-                    value={formData.department}
-                    onChange={handleChange}
-                    className="mb-4 w-full px-3 py-2 border rounded"
-                />
-
-                <label className="block text-gray-700 mb-2">비밀번호</label>
-                <input
-                    type="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    className="mb-4 w-full px-3 py-2 border rounded"
-                    required
-                />
-
-                <div className="flex items-center mb-4">
-                    <input
-                        type="checkbox"
-                        name="agree"
-                        checked={formData.agree}
-                        onChange={handleChange}
-                        className="mr-2"
-                    />
-                    <label className="text-sm text-gray-600">
-                        <span className="font-medium text-gray-800">이용약관</span>에 동의합니다.
-                    </label>
-                </div>
-
-                <button
-                    type="submit"
-                    className="w-full bg-black text-white py-2 rounded hover:bg-gray-800 transition"
-                >
-                    회원가입
-                </button>
-            </form>
+                <input name="name" placeholder="이름" value={formData.name} onChange={handleChange} style={inputStyle} />
+                <input name="email" placeholder="이메일" value={formData.email} onChange={handleChange} style={inputStyle} />
+                <input name="employeeNumber" placeholder="병원 사번" value={formData.employeeNumber} onChange={handleChange} style={inputStyle} />
+                <input name="password" type="password" placeholder="비밀번호" value={formData.password} onChange={handleChange} style={inputStyle} />
+                {errors.password && <p className="text-sm text-red-500 mb-2">{errors.password}</p>}
+                <input name="confirmPassword" type="password" placeholder="비밀번호 확인" value={formData.confirmPassword} onChange={handleChange} style={inputStyle} />
+                {formData.confirmPassword && (
+                    <p className={`text-sm ${formData.password === formData.confirmPassword ? "text-green-600" : "text-red-600"}`}>
+                        {formData.password === formData.confirmPassword ? "비밀번호가 일치합니다" : "비밀번호가 일치하지 않습니다"}
+                    </p>
+                )}
+                <button onClick={handleSignup} style={buttonStyle}>회원가입</button>
+            </div>
         </div>
     );
 }
+
+const inputStyle = {
+    width: "100%",
+    padding: "12px 16px",
+    marginBottom: "16px",
+    border: "1px solid #ccc",
+    borderRadius: "8px",
+    fontSize: "16px"
+};
+
+const buttonStyle = {
+    width: "100%",
+    padding: "12px 16px",
+    backgroundColor: "#4CAF50",
+    color: "white",
+    border: "none",
+    borderRadius: "8px",
+    fontSize: "16px",
+    cursor: "pointer",
+    marginTop: "8px"
+};
