@@ -1,4 +1,5 @@
 import React from "react";
+import { translateColumn } from "@/utils/translate"; // 경로 확인 필요
 
 interface ChartRow {
     [key: string]: string | number | null;
@@ -11,40 +12,50 @@ export default function DataTable({
     data: ChartRow[];
     columns: string[];
 }) {
-    console.log("📊 DataTable 렌더됨");
-    console.log("👉 columns:", columns);
-    console.log("👉 data:", data);
-
     return (
-        <div className="w-full max-w-5xl mx-auto overflow-x-auto rounded-md shadow-sm border border-gray-200 p-2">
-            <table className="table-auto border-collapse text-sm mx-auto">
-                <thead>
-                <tr className="bg-gray-100">
-                    {columns.map((key) => (
-                        <th
-                            key={key}
-                            className="px-4 py-2 border font-semibold text-left whitespace-nowrap"
-                        >
-                            {key}
-                        </th>
-                    ))}
-                </tr>
-                </thead>
-                <tbody>
-                {data.map((row, i) => (
-                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        {columns.map((key) => (
-                            <td
-                                key={key}
-                                className="px-4 py-1 border whitespace-nowrap"
+        <div
+            className="w-full max-w-6xl mx-auto relative"
+            style={{ overflowX: "auto" }}
+        >
+            <div
+                style={{
+                    overflowX: "auto",
+                    overflowY: "hidden",
+                    maxWidth: "100%",
+                }}
+            >
+                <table className="table-auto border-collapse w-full text-sm">
+                    <thead className="bg-gray-100">
+                    <tr>
+                        {columns.map((col) => (
+                            <th
+                                key={col}
+                                className="px-4 py-2 border font-semibold text-left whitespace-nowrap"
                             >
-                                {row[key]}
-                            </td>
+                                {translateColumn(col)}
+                            </th>
                         ))}
                     </tr>
-                ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                    {data.map((row, i) => (
+                        <tr
+                            key={i}
+                            className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                        >
+                            {columns.map((col) => (
+                                <td
+                                    key={col}
+                                    className="px-4 py-1 border whitespace-nowrap"
+                                >
+                                    {row[col]}
+                                </td>
+                            ))}
+                        </tr>
+                    ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }

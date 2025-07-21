@@ -7,6 +7,7 @@ import {
     detectCategoricalColumns,
     filterValidColumns,
 } from "@/utils/analyzeData";
+import { translateColumn } from "@/utils/translate";
 
 export default function BarChart({
                                      xAxis,
@@ -15,7 +16,7 @@ export default function BarChart({
                                      setChartInstance,
                                  }: ChartBaseProps) {
     const chartRef = useRef<HTMLDivElement>(null);
-    const [groupedMode, setGroupedMode] = useState(true);
+    const [groupedMode, setGroupedMode] = useState(false);
     const [userInteracted, setUserInteracted] = useState(false);
 
     const yValues = data.map((row) => Number(row[yAxis])).filter((v) => !isNaN(v));
@@ -28,82 +29,92 @@ export default function BarChart({
     ];
 
     useEffect(() => {
-        const validColumns = filterValidColumns(data);
-        const isCategorical = detectCategoricalColumns(data).includes(xAxis);
-
-        if (!userInteracted && isCategorical && validColumns.includes(xAxis)) {
-            setGroupedMode(true);
-        }
-    }, [xAxis, data, userInteracted]);
-
-    useEffect(() => {
         if (!xAxis || !yAxis || data.length === 0 || !chartRef.current) return;
 
         const chart = echarts.init(chartRef.current);
+        chart.clear(); // 기존 차트 초기화
         setChartInstance(chart);
 
-        const grouped = groupedMode
-            ? Object.entries(
-                data.reduce((acc, row) => {
+        try {
+            let grouped: [string, number][] = [];
+
+            if (groupedMode) {
+                const temp: Record<string, number> = {};
+
+                for (const row of data) {
                     const key = row[xAxis] ?? "null";
-                    acc[key] = (acc[key] || 0) + 1;
-                    return acc;
-                }, {} as Record<string, number>)
-            )
-            : data
-                .map((row) => [row[xAxis], Number(row[yAxis]) || 0])
-                .filter(([x, y]) => x !== undefined && !isNaN(y));
+                    temp[key] = (temp[key] || 0) + 1;
+                }
 
-        // 🔒 grouped이 0이면 종료
-        if (grouped.length === 0) return;
+                grouped = Object.entries(temp);
+            } else {
+                const grouped: [string, number][] = data
+                    .map((row) => {
+                        const xVal = row[xAxis] ?? "null";
+                        const yVal = Number(row[yAxis]);
+                        return [xVal.toString(), isNaN(yVal) ? 0 : yVal] as [string, number];
+                    })
+                    .filter(([x, y]) => x !== undefined && !isNaN(y));
+            }
 
-        const total = grouped.reduce((sum, [_, val]) => sum + val, 0);
+            const total = grouped.reduce((sum, [_, val]) => sum + val, 0);
 
-        const barWidth = () => {
-            const count = grouped.length;
-            if (count >= 50) return 10;
-            if (count >= 30) return 20;
-            if (count >= 15) return 40;
-            return 60;
-        };
+            const barWidth = () => {
+                const count = grouped.length;
+                if (count >= 50) return 10;
+                if (count >= 30) return 20;
+                if (count >= 15) return 40;
+                return 60;
+            };
 
-        const seriesData = grouped.map(([x, y], index) => ({
-            value: y,
-            itemStyle: {
-                color: colorPalette[index % colorPalette.length],
-            },
-        }));
-
-        chart.setOption({
-            tooltip: {
-                trigger: "axis",
-                axisPointer: { type: "shadow" },
-            },
-            xAxis: {
-                type: "category",
-                data: grouped.map(([x]) => x),
-            },
-            yAxis: {
-                type: "value",
-            },
-            series: [
-                {
-                    type: "bar",
-                    data: seriesData,
-                    barWidth: barWidth(),
-                    label: groupedMode
-                        ? {
-                            show: true,
-                            position: "top",
-                            formatter: function (params: any) {
-                                const percent = total > 0 ? ((params.value / total) * 100).toFixed(1) : "0";
-                                return `${percent}%`;
-                            },
-                        }
-                        : { show: false },
+            const seriesData = grouped.map(([x, y], index) => ({
+                value: y,
+                itemStyle: {
+                    color: colorPalette[index % colorPalette.length],
                 },
-            ],
-        });
+            }));
+
+            chart.setOption({
+                tooltip: {
+                    trigger: "axis",
+                    axisPointer: { type: "shadow" },
+                    formatter: function (params: any) {
+                        const value = params[0]?.value;
+                        const name = params[0]?.name;
+                        return `${translateColumn(xAxis)}: ${name}<br>${translateColumn(yAxis)}: ${value}`;
+                    },
+                },
+                xAxis: {
+                    type: "category",
+                    name: translateColumn(xAxis),
+                    data: grouped.map(([x]) => x),
+                },
+                yAxis: {
+                    type: "value",
+                    name: translateColumn(yAxis),
+                },
+                series: [
+                    {
+                        type: "bar",
+                        data: seriesData,
+                        barWidth: barWidth(),
+                        label: groupedMode
+                            ? {
+                                show: true,
+                                position: "top",
+                                formatter: function (params: any) {
+                                    const percent =
+                                        total > 0 ? ((params.value / total) * 100).toFixed(1) : "0";
+                                    return `${percent}%`;
+                                },
+                            }
+                            : { show: false },
+                    },
+                ],
+            });
+        } catch (err) {
+            console.warn("BarChart rendering error:", err);
+        }
 
         return () => {
             chart.dispose();

@@ -5,6 +5,7 @@ import * as echarts from "echarts";
 import "echarts-gl";
 import { Bar3dProps } from "@/types/ChartBaseProps";
 import { detectCategoricalColumns } from "@/utils/analyzeData";
+import { translateColumn } from "@/utils/translate"; // ✅ 컬럼명 번역 함수
 
 export default function Bar3dChart({
                                        xAxis,
@@ -14,7 +15,7 @@ export default function Bar3dChart({
                                        setChartInstance,
                                    }: Bar3dProps) {
     const chartRef = useRef<HTMLDivElement>(null);
-    const [groupedMode, setGroupedMode] = useState(false);
+    const [groupedMode, setGroupedMode] = useState(false); // ✅ 기본 해제
     const [zMode, setZMode] = useState<"count" | "sum" | "avg">("count");
 
     const colorPalette = [
@@ -22,12 +23,15 @@ export default function Bar3dChart({
         "#3BA272", "#FC8452", "#9A60B4", "#EA7CCC"
     ];
 
+    // ✅ 자동 그룹화 비활성화
+    /*
     useEffect(() => {
-        const categoricals = detectCategoricalColumns(data);
-        if (categoricals.includes(xAxis) && categoricals.includes(yAxis)) {
-            setGroupedMode(true);
-        }
+      const categoricals = detectCategoricalColumns(data);
+      if (categoricals.includes(xAxis) && categoricals.includes(yAxis)) {
+        setGroupedMode(true);
+      }
     }, [xAxis, yAxis, data]);
+    */
 
     useEffect(() => {
         if (!zAxis && zMode !== "count") {
@@ -76,27 +80,28 @@ export default function Bar3dChart({
                 }
             }
         } else {
-            seriesData = data
-                .map((row, index) => ({
-                    value: [
-                        row[xAxis],
-                        row[yAxis],
-                        isNaN(Number(row[zAxis])) ? 0 : Number(row[zAxis]),
-                    ],
-                    itemStyle: {
-                        color: colorPalette[index % colorPalette.length],
-                    },
-                }));
+            seriesData = data.map((row, index) => ({
+                value: [
+                    row[xAxis],
+                    row[yAxis],
+                    isNaN(Number(row[zAxis])) ? 0 : Number(row[zAxis]),
+                ],
+                itemStyle: {
+                    color: colorPalette[index % colorPalette.length],
+                },
+            }));
         }
 
         chart.setOption({
             tooltip: {
                 formatter: (params: any) =>
-                    `${xAxis}: ${params.value[0]}<br>${yAxis}: ${params.value[1]}<br>${zAxis || "count"}: ${params.value[2]}`,
+                    `${translateColumn(xAxis)}: ${params.value[0]}<br>` +
+                    `${translateColumn(yAxis)}: ${params.value[1]}<br>` +
+                    `${translateColumn(zAxis || "count")}: ${params.value[2]}`,
             },
-            xAxis3D: { type: "category", name: xAxis },
-            yAxis3D: { type: "category", name: yAxis },
-            zAxis3D: { type: "value", name: zAxis || "count" },
+            xAxis3D: { type: "category", name: translateColumn(xAxis) },
+            yAxis3D: { type: "category", name: translateColumn(yAxis) },
+            zAxis3D: { type: "value", name: translateColumn(zAxis || "count") },
             grid3D: {
                 boxWidth: 100,
                 boxDepth: 80,
@@ -136,11 +141,11 @@ export default function Bar3dChart({
                             setZMode(e.target.value as "count" | "sum" | "avg")
                         }
                     >
-                        <option value="count">Z값: Count</option>
+                        <option value="count">Z값: 개수</option>
                         {zAxis && (
                             <>
-                                <option value="sum">Z값: Sum</option>
-                                <option value="avg">Z값: Avg</option>
+                                <option value="sum">Z값: 합계</option>
+                                <option value="avg">Z값: 평균</option>
                             </>
                         )}
                     </select>

@@ -7,29 +7,35 @@ import {
     filterValidColumns,
     detectCategoricalColumns,
 } from "@/utils/analyzeData";
+import { translateColumn } from "@/utils/translate"; // ✅ 컬럼명 번역 함수
 
-export default function PieChart({ xAxis, yAxis, data, setChartInstance }: ChartBaseProps) {
+export default function PieChart({
+                                     xAxis,
+                                     yAxis,
+                                     data,
+                                     setChartInstance,
+                                 }: ChartBaseProps) {
     const chartRef = useRef<HTMLDivElement>(null);
-    const [groupedMode, setGroupedMode] = useState(false);
+    const [groupedMode, setGroupedMode] = useState(false); // ✅ 기본 해제
     const [manualToggle, setManualToggle] = useState(false);
 
     const yValues = data.map((row) => Number(row[yAxis])).filter((v) => !isNaN(v));
     const isYNumericSummable = yValues.length > 0 && new Set(yValues).size > 1;
     const toggleDisabled = !isYNumericSummable;
 
-    useEffect(() => {
-        if (!manualToggle && xAxis && data.length > 0) {
-            const isXCategorical = detectCategoricalColumns(data).includes(xAxis);
-            setGroupedMode(isXCategorical);
-        }
-    }, [xAxis, data, manualToggle]);
+    // ✅ 자동 그룹화 제거
+    // useEffect(() => {
+    //     if (!manualToggle && xAxis && data.length > 0) {
+    //         const isXCategorical = detectCategoricalColumns(data).includes(xAxis);
+    //         setGroupedMode(isXCategorical);
+    //     }
+    // }, [xAxis, data, manualToggle]);
 
     useEffect(() => {
         if (!chartRef.current || !xAxis || data.length === 0) return;
 
         const validColumns = filterValidColumns(data);
         const isXCategorical = detectCategoricalColumns(data).includes(xAxis);
-
         if (groupedMode && (!validColumns.includes(xAxis) || !isXCategorical)) return;
 
         const chart = echarts.init(chartRef.current);
@@ -38,7 +44,7 @@ export default function PieChart({ xAxis, yAxis, data, setChartInstance }: Chart
         const seriesData = groupedMode
             ? Object.entries(
                 data.reduce((acc, row) => {
-                    const key = row[xAxis];
+                    const key = row[xAxis] ?? "null";
                     acc[key] = (acc[key] || 0) + 1;
                     return acc;
                 }, {} as Record<string, number>)
@@ -51,11 +57,19 @@ export default function PieChart({ xAxis, yAxis, data, setChartInstance }: Chart
                 .filter((d) => d.name && !isNaN(d.value));
 
         chart.setOption({
-            tooltip: { trigger: "item" },
-            legend: { top: "bottom" },
+            tooltip: {
+                trigger: "item",
+                formatter: (params: any) =>
+                    `${translateColumn(xAxis)}: ${params.name}<br>` +
+                    `${translateColumn(yAxis)}: ${params.value} (${params.percent}%)`,
+            },
+            legend: {
+                top: "bottom",
+                type: "scroll",
+            },
             series: [
                 {
-                    name: groupedMode ? "Count" : yAxis,
+                    name: groupedMode ? "Count" : translateColumn(yAxis),
                     type: "pie",
                     radius: "60%",
                     data: seriesData,

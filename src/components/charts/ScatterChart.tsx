@@ -7,18 +7,25 @@ import {
     filterValidColumns,
     detectCategoricalColumns,
 } from "@/utils/analyzeData";
+import { translateColumn } from "@/utils/translate";
 
-export default function ScatterChart({ xAxis, yAxis, data, setChartInstance }: ChartBaseProps) {
+export default function ScatterChart({
+                                         xAxis,
+                                         yAxis,
+                                         data,
+                                         setChartInstance,
+                                     }: ChartBaseProps) {
     const chartRef = useRef<HTMLDivElement>(null);
-    const [groupedMode, setGroupedMode] = useState(false);
+    const [groupedMode, setGroupedMode] = useState(false); // ✅ 기본값: 해제
     const [manualToggle, setManualToggle] = useState(false);
 
-    useEffect(() => {
-        if (!manualToggle && xAxis && data.length > 0) {
-            const isXCategorical = detectCategoricalColumns(data).includes(xAxis);
-            setGroupedMode(isXCategorical);
-        }
-    }, [xAxis, data, manualToggle]);
+    // ❌ 자동 체크 제거
+    // useEffect(() => {
+    //     if (!manualToggle && xAxis && data.length > 0) {
+    //         const isXCategorical = detectCategoricalColumns(data).includes(xAxis);
+    //         setGroupedMode(isXCategorical);
+    //     }
+    // }, [xAxis, data, manualToggle]);
 
     useEffect(() => {
         if (!chartRef.current || !xAxis || !yAxis || data.length === 0) return;
@@ -54,10 +61,15 @@ export default function ScatterChart({ xAxis, yAxis, data, setChartInstance }: C
         const xMin = xValues.length > 0 ? Math.floor(Math.min(...xValues) - 10) : undefined;
 
         chart.setOption({
-            tooltip: { trigger: "item" },
+            tooltip: {
+                trigger: "item",
+                formatter: (params: any) => {
+                    return `${translateColumn(xAxis)}: ${params.value[0]}<br>${translateColumn(yAxis)}: ${params.value[1]}`;
+                },
+            },
             xAxis: {
                 type: "value",
-                name: xAxis,
+                name: translateColumn(xAxis),
                 min: xMin,
                 axisLabel: {
                     rotate: 45,
@@ -69,7 +81,7 @@ export default function ScatterChart({ xAxis, yAxis, data, setChartInstance }: C
             },
             yAxis: {
                 type: "value",
-                name: yAxis,
+                name: translateColumn(yAxis),
             },
             series: [
                 {
@@ -90,7 +102,7 @@ export default function ScatterChart({ xAxis, yAxis, data, setChartInstance }: C
                         type="checkbox"
                         checked={groupedMode}
                         onChange={() => {
-                            setGroupedMode(prev => !prev);
+                            setGroupedMode((prev) => !prev);
                             setManualToggle(true);
                         }}
                     />

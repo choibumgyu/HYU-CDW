@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: err.message }, { status: 400 });
         }
         */
+        // 임시 주석
 
         // 🔁 [원래 API 호출 방식 - 추후 복구용 주석]
 
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
         }
 
         return NextResponse.json({ data: result.data });
+
         //여기까지 주석
     } catch (err) {
         const message = err instanceof Error ? err.message : "서버 오류 발생";

@@ -12,7 +12,7 @@ import Bar3dChart from "@/components/charts/Bar3dChart";
 import PieChart from "@/components/charts/PieChart";
 
 import BackToAiButton from "@/components/ui/BackToAiButton";
-
+import { translateColumn } from "@/utils/translate";
 
 interface ChartRow {
     [key: string]: string | number | null;
@@ -31,6 +31,7 @@ export default function AnalysisPage() {
     const [hoveredAxis, setHoveredAxis] = useState<string | null>(null);
     const [error, setError] = useState<string>("");
     const [chartInstance, setChartInstance] = useState<echarts.ECharts | null>(null);
+    const [showScrollTop, setShowScrollTop] = useState(false);
 
     const fetchChartData = async (customQuery?: string) => {
         try {
@@ -66,7 +67,6 @@ export default function AnalysisPage() {
                 throw new Error("데이터 형식이 올바르지 않습니다.");
             }
 
-            // 초기화
             setXAxis("");
             setYAxis("");
             setZAxis("");
@@ -95,6 +95,19 @@ export default function AnalysisPage() {
             fetchChartData(stored);
             sessionStorage.removeItem("custom_sql");
         }
+    }, []);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            const scrolledDown = window.scrollY > 300;
+            const longPage = document.body.scrollHeight > 2000;
+            setShowScrollTop(scrolledDown && longPage);
+        };
+
+        window.addEventListener("scroll", handleScroll);
+        handleScroll();
+
+        return () => window.removeEventListener("scroll", handleScroll);
     }, []);
 
     const filteredData = limit ? globalData.slice(0, limit) : globalData;
@@ -138,7 +151,6 @@ export default function AnalysisPage() {
         const header = Object.keys(filteredData[0]);
         const rows = filteredData.map(row => header.map(h => `"${String(row[h] ?? "")}"`).join(","));
         const csvContent = [header.join(","), ...rows].join("\n");
-        console.log("📊 filteredData 개수:", filteredData.length);
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
 
@@ -155,7 +167,7 @@ export default function AnalysisPage() {
         if (!summary) return null;
         return (
             <div className="absolute z-10 bg-white border p-2 rounded-md text-sm shadow-lg">
-                <p><strong>{col} 요약</strong></p>
+                <p><strong>{translateColumn(col)} 요약</strong></p>
                 <p>개수: {summary.count}</p>
                 <p>평균: {summary.mean.toFixed(2)}</p>
                 <p>중앙값: {summary.median}</p>
@@ -170,6 +182,7 @@ export default function AnalysisPage() {
             <BackToAiButton />
             <h1 className="text-3xl font-bold mt-6">CDW 데이터 시각화</h1>
 
+            {/* 쿼리 입력 */}
             <div className="w-4/5 mx-auto my-4 flex flex-col items-end bg-white p-4 rounded-lg">
                 <textarea
                     rows={4}
@@ -188,11 +201,10 @@ export default function AnalysisPage() {
             </div>
 
             {error && (
-                <div className="text-red-600 font-semibold mb-4">
-                    {error}
-                </div>
+                <div className="text-red-600 font-semibold mb-4">{error}</div>
             )}
 
+            {/* 축 선택 */}
             <div className="flex justify-center gap-4 flex-wrap mt-4">
                 {["xAxis", "yAxis", currentChartType === "bar3D" ? "zAxis" : null]
                     .filter(Boolean)
@@ -201,13 +213,13 @@ export default function AnalysisPage() {
                             axis === "xAxis" ? xAxis : axis === "yAxis" ? yAxis : zAxis;
                         const setter =
                             axis === "xAxis" ? setXAxis : axis === "yAxis" ? setYAxis : setZAxis;
-                        const label = axis!.charAt(0).toUpperCase(); // X, Y, Z
+                        const label = axis!.charAt(0).toUpperCase();
 
                         return (
                             <div
                                 key={axis}
                                 className="relative inline-block w-auto min-w-[8rem] max-w-[20rem]"
-                                title={`${label}축 선택`}
+                                title={`${translateColumn(value)} (${label}축 선택)`}
                                 onMouseEnter={() => setHoveredAxis(axis!)}
                                 onMouseLeave={() => setHoveredAxis(null)}
                             >
@@ -218,24 +230,16 @@ export default function AnalysisPage() {
                                 >
                                     <option value="">{label}</option>
                                     {columnNames.map((name) => (
-                                        <option
-                                            key={name}
-                                            value={name}
-                                            className="whitespace-normal break-words text-left"
-                                        >
-                                            {name}
+                                        <option key={name} value={name}>
+                                            {translateColumn(name)}
                                         </option>
                                     ))}
                                 </select>
-
-                                {/* ▼ 화살표 */}
                                 <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-gray-400">
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                                     </svg>
                                 </div>
-
-                                {/* 요약 툴팁 */}
                                 {hoveredAxis === axis && value && (
                                     <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50">
                                         {renderSummaryTooltip(value)}
@@ -247,6 +251,7 @@ export default function AnalysisPage() {
             </div>
 
 
+            {/* 데이터 제한 */}
             <div className="my-6 flex justify-center">
                 <div className="text-left">
                     <input
@@ -259,9 +264,7 @@ export default function AnalysisPage() {
                         }}
                         className="border rounded px-2 py-1 w-24"
                         placeholder="Top N"
-                        title="상위 데이터 제한"
                     />
-
                     {globalData.length > 0 && (
                         <p className="text-xs text-gray-400 mt-1 text-center">
                             총 {globalData.length}개 데이터
@@ -270,71 +273,50 @@ export default function AnalysisPage() {
                 </div>
             </div>
 
+            {/* 차트 선택 */}
             <div className="flex justify-center flex-wrap gap-4 mt-8">
                 <ChartButton
                     label={<img src="/images/bar.png" title="Bar Chart" className="w-8 h-8" />}
-                    onClick={() => {
-                        setCurrentChartType("bar");
-                    }}
+                    onClick={() => setCurrentChartType("bar")}
                 />
                 <ChartButton
                     label={<img src="/images/line.png" title="Line Chart" className="w-8 h-8" />}
-                    onClick={() => {
-                        setCurrentChartType("line");
-                    }}
+                    onClick={() => setCurrentChartType("line")}
                 />
                 <ChartButton
                     label={<img src="/images/scatter.png" title="Scatter Chart" className="w-8 h-8" />}
-                    onClick={() => {
-                        setCurrentChartType("scatter");
-                    }}
+                    onClick={() => setCurrentChartType("scatter")}
                 />
                 <ChartButton
                     label={<img src="/images/bar.png" title="3D Bar Chart" className="w-8 h-8" />}
-                    onClick={() => {
-                        setCurrentChartType("bar3D");
-                    }}
+                    onClick={() => setCurrentChartType("bar3D")}
                 />
                 <ChartButton
                     label={<img src="/images/pie.png" title="Pie Chart" className="w-8 h-8" />}
-                    onClick={() => {
-                        setCurrentChartType("pie");
-                    }}
+                    onClick={() => setCurrentChartType("pie")}
                 />
                 <ChartButton
                     label={<img src="/images/table.png" title="Table View" className="w-8 h-8" />}
-                    onClick={() => {
-                        setCurrentChartType("table");
-                    }}
+                    onClick={() => setCurrentChartType("table")}
                 />
             </div>
 
-
+            {/* 차트 렌더링 */}
             {filteredData.length > 0 ? (
                 currentChartType === "bar" ? (
-                    <BarChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance}/>
+                    <BarChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "line" ? (
-                    <LineChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance}/>
-                ) :currentChartType === "scatter" ? (
-                    <ScatterChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance}/>
+                    <LineChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
+                ) : currentChartType === "scatter" ? (
+                    <ScatterChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "pie" ? (
-                    <PieChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance}/>
+                    <PieChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "bar3D" ? (
-                    <Bar3dChart
-                        xAxis={xAxis}
-                        yAxis={yAxis}
-                        zAxis={zAxis}
-                        data={filteredData}
-                        setChartInstance={setChartInstance}
-                    />
+                    <Bar3dChart xAxis={xAxis} yAxis={yAxis} zAxis={zAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "table" ? (
                     <DataTable data={filteredData} columns={columnNames} />
                 ) : (
-                    <div
-                        ref={chartRef}
-                        id="chart"
-                        className="relative w-4/5 h-[500px] mx-auto my-4"
-                    />
+                    <div ref={chartRef} className="relative w-4/5 h-[500px] mx-auto my-4" />
                 )
             ) : (
                 <div className="w-4/5 h-[400px] mx-auto mt-8 flex items-center justify-center text-gray-500 text-sm">
@@ -348,13 +330,13 @@ export default function AnalysisPage() {
                 </div>
             )}
 
-
+            {/* 다운로드 버튼 */}
             <div className="fixed top-[80px] right-6 flex gap-2 z-30">
                 <button
                     onClick={downloadChartImage}
                     title="그래프 다운로드"
                     className={`flex items-center gap-1 px-3 py-1 text-sm rounded-full shadow transition
-    ${currentChartType === "table"
+            ${currentChartType === "table"
                         ? "bg-gray-300 text-white cursor-not-allowed pointer-events-none"
                         : "bg-cyan-500 hover:bg-cyan-600 text-white"}`}
                 >
@@ -369,12 +351,29 @@ export default function AnalysisPage() {
                 </button>
             </div>
 
-
+            {/* TOP 버튼 */}
+            {currentChartType === "table" && showScrollTop && (
+                <div className="fixed bottom-6 right-6 z-30">
+                    <button
+                        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                        title="맨 위로"
+                        className="flex items-center justify-center px-3 py-2 text-sm bg-gray-500 hover:bg-gray-600 text-white rounded-full shadow"
+                    >
+                        TOP
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
 
-function ChartButton({ label, onClick }: { label: React.ReactNode; onClick: () => void }) {
+function ChartButton({
+                         label,
+                         onClick,
+                     }: {
+    label: React.ReactNode;
+    onClick: () => void;
+}) {
     return (
         <button
             onClick={onClick}
