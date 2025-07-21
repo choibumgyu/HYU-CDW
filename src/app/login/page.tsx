@@ -23,7 +23,7 @@ export default function Page() {
 
         if (response.ok) {
             alert(data.message);
-            localStorage.setItem("token", data.access_token);  //토큰 저장 추가.
+            sessionStorage.setItem("token", data.access_token);  //토큰 저장 추가.
             window.location.href = "/";
         } else {
             alert(data.message);

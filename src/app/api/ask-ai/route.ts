@@ -4,14 +4,16 @@ export async function POST(req: NextRequest) {
     const { question } = await req.json();
 
     try {
+        const token = req.headers.get("authorization"); // 클라이언트에서 전달된 토큰
+
         const duckdnsRes = await fetch(`${process.env.NEXT_PUBLIC_OPEN_API}/sql-generator/`, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                ...(token && { Authorization: token }) // 외부 API로 토큰 전달
             },
             body: JSON.stringify({ text: question })
         });
-
         // 예: /app/api/ask-ai/route.ts
         const data = await duckdnsRes.json();
 

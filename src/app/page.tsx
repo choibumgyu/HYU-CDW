@@ -1,23 +1,93 @@
+"use client";
+
 import Layout from "@/components/layout/Layout";
-import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function HomePage() {
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const router = useRouter();
+
+    // 로그인 여부 확인
+    useEffect(() => {
+        const token = sessionStorage.getItem("token");
+        setIsLoggedIn(!!token);
+    }, []);
+
+    const handleStartAnalysis = () => {
+        if (isLoggedIn) {
+            router.push("/analysis");
+        } else {
+            alert("로그인이 필요한 기능입니다. 로그인 페이지로 이동합니다.");
+            router.push("/login");
+        }
+    };
+
+    // 관리자 접근 핸들러
+    const handleAdminAccess = async () => {
+        if (!isLoggedIn) {
+            alert("로그인이 필요한 기능입니다. 로그인 페이지로 이동합니다.");
+            router.push("/login");
+            return;
+        }
+
+        try {
+            const token = sessionStorage.getItem("token");
+            const res = await fetch("http://localhost:8000/api/auth/me", {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (!res.ok) throw new Error("유저 정보 조회 실패");
+
+            const user = await res.json();
+            if (user.role === "admin") {
+                router.push("/admin");
+            } else {
+                alert("관리자만 이용 가능한 기능입니다.");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("사용자 인증에 실패했습니다. 다시 로그인해주세요.");
+            router.push("/login");
+        }
+    };
+
     return (
         <Layout>
             <div className="flex flex-col items-center justify-start min-h-screen py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-4xl w-full space-y-8 text-center">
                     <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-gray-900 mb-2">
-                        <span className="inline-block">Clinical Datawarehouse에</span>{' '}
+                        <span className="inline-block">Clinical Datawarehouse에</span>{" "}
                         <span className="inline-block">오신 것을 환영합니다</span>
                     </h1>
                     <p className="mt-4 text-lg sm:text-xl text-gray-600 mb-8">
                         환자 데이터 분석 및 코호트 관리를 위한 통합 플랫폼입니다.
                     </p>
+
+                    {/* 데이터 분석 시작하기 버튼 */}
                     <div className="mt-8 space-y-4">
-                        <Link href="/analysis" className="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                        <button
+                            onClick={handleStartAnalysis}
+                            className="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                        >
                             데이터 분석 시작하기
-                        </Link>
+                        </button>
                     </div>
+
+                    {/* 관리자 페이지로 이동 버튼 */}
+                    <div className="mt-4 space-y-4">
+                        <button
+                            onClick={handleAdminAccess}
+                            className="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+                        >
+                            관리자 페이지로 이동
+                        </button>
+                    </div>
+
+                    {/* 주요 기능 섹션 */}
                     <div className="mt-12">
                         <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4">주요 기능</h2>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -26,9 +26,14 @@ export default function AiChatPage() {
         const userMessage: ChatMessage = { role: "user", message: input };
         const newHistory = [...chatHistory, userMessage];
 
+        const token = sessionStorage.getItem("token");
+
         const response = await fetch("/api/ask-ai", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                ...(token && { Authorization: `Bearer ${token}` })  // 토큰이 있을 때만 추가
+            },
             body: JSON.stringify({ question: input })
         });
         const data = await response.json();
@@ -66,11 +71,10 @@ export default function AiChatPage() {
                 {chatHistory.map((chat, idx) => (
                     <div
                         key={idx}
-                        className={`mb-4 p-3 rounded-lg whitespace-pre-wrap ${
-                            chat.role === "user"
+                        className={`mb-4 p-3 rounded-lg whitespace-pre-wrap ${chat.role === "user"
                                 ? "bg-white text-right border"
                                 : "bg-blue-50 text-left border border-blue-300"
-                        }`}
+                            }`}
                     >
                         <strong>{chat.role === "user" ? "👤 나" : "🤖 GPT"}</strong>
                         <div className="mt-1">{chat.message}</div>

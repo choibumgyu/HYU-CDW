@@ -38,14 +38,18 @@ export default function AnalysisPage() {
             const queryToRun = customQuery || sql;
             setCurrentChartType("table");
 
+            const token = sessionStorage.getItem("token");
+
             const response = await fetch("/api/sql-execute", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "Accept": "application/json"
+                    "Accept": "application/json",
+                    ...(token && { Authorization: `Bearer ${token}` }) // 토큰 포함
                 },
                 body: JSON.stringify({ sql: queryToRun })
             });
+
 
             const result: { data?: ChartRow[]; error?: string; detail?: any } = await response.json();
             console.log("📦 DuckDNS 응답 전체:", JSON.stringify(result, null, 2));
@@ -305,11 +309,16 @@ export default function AnalysisPage() {
             {filteredData.length > 0 ? (
                 currentChartType === "bar" ? (
                     <BarChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
+                    <BarChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "line" ? (
                     <LineChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "scatter" ? (
                     <ScatterChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
+                    <LineChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
+                ) : currentChartType === "scatter" ? (
+                    <ScatterChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "pie" ? (
+                    <PieChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                     <PieChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
                 ) : currentChartType === "bar3D" ? (
                     <Bar3dChart xAxis={xAxis} yAxis={yAxis} zAxis={zAxis} data={filteredData} setChartInstance={setChartInstance} />
@@ -339,6 +348,9 @@ export default function AnalysisPage() {
             ${currentChartType === "table"
                         ? "bg-gray-300 text-white cursor-not-allowed pointer-events-none"
                         : "bg-cyan-500 hover:bg-cyan-600 text-white"}`}
+    ${currentChartType === "table"
+                            ? "bg-gray-300 text-white cursor-not-allowed pointer-events-none"
+                            : "bg-cyan-500 hover:bg-cyan-600 text-white"}`}
                 >
                     📈 <span className="hidden sm:inline">차트</span>
                 </button>
