@@ -38,14 +38,18 @@ export default function CohortResultPage() {
                 setLoading(true);
                 setError("");
 
+                const token = sessionStorage.getItem("token");
+
                 const res = await fetch("/api/sql-execute", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        Accept: "application/json"
+                        Accept: "application/json",
+                        ...(token && { Authorization: `Bearer ${token}` })
                     },
                     body: JSON.stringify({ sql })
                 });
+                //토큰을 포함한 fetch로 수정.
 
                 const result = await res.json();
                 console.log("📦 DuckDNS 응답 전체:", JSON.stringify(result, null, 2));

@@ -32,7 +32,7 @@ export default function SignupPage() {
     };
 
     const handleSignup = async () => {
-        const response = await fetch(endpoint+"/signup", {
+        const response = await fetch(endpoint+"/api/auth/signup", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
