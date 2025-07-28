@@ -26,7 +26,11 @@ export async function POST(req: NextRequest) {
 
         const token = req.headers.get("authorization"); // 클라이언트에서 받은 토큰 가져오기
 
-        const apiRes = await fetch("/sql-executor/", {
+        const protocol = req.headers.get("x-forwarded-proto") || "http";
+        const host = req.headers.get("x-forwarded-host");
+        const baseUrl = `${protocol}://${host}`;
+
+        const apiRes = await fetch(`${baseUrl}/sql-executor/`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",

@@ -6,7 +6,12 @@ export async function POST(req: NextRequest) {
     try {
         const token = req.headers.get("authorization"); // 클라이언트에서 전달된 토큰
 
-        const res = await fetch("/sql-generator/", {
+        // 현재 요청의 프로토콜과 호스트를 가져옴
+        const protocol = req.headers.get("x-forwarded-proto") || "https";
+        const host = req.headers.get("x-forwarded-host");
+        const baseUrl = `${protocol}://${host}/`;
+
+        const res = await fetch(`${baseUrl}/sql-generator/`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
