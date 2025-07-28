@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
     try {
         const token = req.headers.get("authorization"); // 클라이언트에서 전달된 토큰
 
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        const baseUrl = process.env.NEXT_PUBLIC_OPEN_API;
 
         const res = await fetch(`${baseUrl}/sql-generator/`, {
             method: "POST",

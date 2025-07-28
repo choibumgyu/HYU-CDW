@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
         const token = req.headers.get("authorization"); // 클라이언트에서 받은 토큰 가져오기
 
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        const baseUrl = process.env.NEXT_PUBLIC_OPEN_API;
 
         const apiRes = await fetch(`${baseUrl}/sql-executor/`, {
             method: "POST",
