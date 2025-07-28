@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
         const url = `${protocol}://${host}`;
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || url;
 
-        const res = await fetch(`${baseUrl}/sql-generator/`, {
+        const res = await fetch(`${baseUrl}/sql-generator`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
