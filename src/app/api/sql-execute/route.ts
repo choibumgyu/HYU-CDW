@@ -49,7 +49,9 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        return NextResponse.json({ data: result.data });
+        // 여기서 result.data가 배열인지 확인하고 아닌 경우 빈 배열로 대체
+        const rows = Array.isArray(result.data) ? result.data : [];
+        return NextResponse.json({ data: rows });
 
         //여기까지 주석
     } catch (err) {
