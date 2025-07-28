@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
     try {
         const token = req.headers.get("authorization"); // 클라이언트에서 전달된 토큰
 
-        const duckdnsRes = await fetch(`${process.env.NEXT_PUBLIC_OPEN_API}/sql-generator/`, {
+        const res = await fetch("/sql-generator/", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -15,9 +15,9 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify({ text: question })
         });
         // 예: /app/api/ask-ai/route.ts
-        const data = await duckdnsRes.json();
+        const data = await res.json();
 
-        if (duckdnsRes.status === 422) {
+        if (res.status === 422) {
             const errorMsg = data?.detail?.[0]?.msg || "유효성 오류가 발생했습니다.";
             return NextResponse.json({
                 sql: data.sql,

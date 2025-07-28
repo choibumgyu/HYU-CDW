@@ -24,11 +24,9 @@ export async function POST(req: NextRequest) {
 
         // 🔁 [원래 API 호출 방식 - 추후 복구용 주석]
 
-        const endpoint = process.env.NEXT_PUBLIC_OPEN_API + "/sql-executor/";
-
         const token = req.headers.get("authorization"); // 클라이언트에서 받은 토큰 가져오기
 
-        const apiRes = await fetch(endpoint, {
+        const apiRes = await fetch("/sql-executor/", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
