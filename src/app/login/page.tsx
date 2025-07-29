@@ -10,7 +10,7 @@ export default function Page() {
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
-    const endpoint = process.env.NEXT_PUBLIC_OPEN_API;
+    const endpoint = process.env.NEXT_PUBLIC_OPEN_API2;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

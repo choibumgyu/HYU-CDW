@@ -18,7 +18,7 @@ export default function AdminPage() {
 
     const token = sessionStorage.getItem("token");
 
-    const endpoint = process.env.NEXT_PUBLIC_OPEN_API;
+    const endpoint = process.env.NEXT_PUBLIC_OPEN_API2;
 
     const fetchPendingUsers = async () => {
         const response = await fetch(endpoint+"/api/auth/unapproved_user", {

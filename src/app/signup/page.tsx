@@ -12,7 +12,7 @@ export default function SignupPage() {
 
     const [errors, setErrors] = useState<{ password?: string }>({});
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9]).{8,}$/;
-    const endpoint = process.env.NEXT_PUBLIC_OPEN_API;
+    const endpoint = process.env.NEXT_PUBLIC_OPEN_API2;
 
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

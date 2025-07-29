@@ -40,7 +40,7 @@ export default function AnalysisPage() {
 
             const token = sessionStorage.getItem("token");
 
-            const response = await fetch("/api/sql-execute", {
+            const response = await fetch("/api/sql-executor/", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

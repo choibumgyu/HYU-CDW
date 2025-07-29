@@ -1,0 +1,26 @@
+services:
+  nextjs:
+    build:
+      context: .
+    container_name: nextjs-container
+    ports:
+      - "3000:3000"
+    networks:
+      - omop-network
+  nginx:
+    image: nginx:latest
+    container_name: nginx-container
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/nginx/conf.d:/etc/nginx/conf.d:ro
+      - /etc/nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - nextjs
+    networks:
+      - omop-network
+
+networks:
+  omop-network:
+    external: true

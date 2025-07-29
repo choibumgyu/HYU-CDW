@@ -28,7 +28,7 @@ export default function AiChatPage() {
 
         const token = sessionStorage.getItem("token");
 
-        const response = await fetch("/api/ask-ai", {
+        const response = await fetch("/api/ask-ai/", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
