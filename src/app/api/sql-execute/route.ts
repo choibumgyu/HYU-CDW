@@ -1,31 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-// ✅ 로컬 DB 연결 (lib/db.ts에 설정한 Pool 사용)
-import pool from "../../../../lib/db";
+import { setTimeout } from 'timers/promises';
 
 export async function POST(req: NextRequest) {
     try {
         const { sql } = await req.json();
-
         if (!sql || typeof sql !== "string") {
             return NextResponse.json({ error: "SQL 쿼리가 없습니다." }, { status: 400 });
         }
 
-        // ✅ [임시] 로컬 PostgreSQL 실행
-        /*
-        try {
-            const result = await pool.query(sql);
-            return NextResponse.json({ data: result.rows });
-        } catch (err: any) {
-            console.error("❌ 로컬 DB 실행 오류:", err.message);
-            return NextResponse.json({ error: err.message }, { status: 400 });
-        }
-        */
-        // 임시 주석
+        const controller = new AbortController();
+        const timeout = 300_000; // 5분
 
-        // 🔁 [원래 API 호출 방식 - 추후 복구용 주석]
+       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-        const token = req.headers.get("authorization"); // 클라이언트에서 받은 토큰 가져오기
 
+        const token = req.headers.get("authorization");
         const baseUrl = process.env.NEXT_PUBLIC_OPEN_API;
 
         const apiRes = await fetch(`${baseUrl}/sql-executor/`, {
@@ -33,11 +22,13 @@ export async function POST(req: NextRequest) {
             headers: {
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                ...(token && { Authorization: token }) // 토큰이 있으면 외부 API로 전달
+                ...(token && { Authorization: token })
             },
-            body: JSON.stringify({ sql })
+            body: JSON.stringify({ sql }),
+            signal: controller.signal
         });
 
+        clearTimeout(timeoutId);
 
         const result = await apiRes.json();
 
@@ -53,12 +44,14 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // 여기서 result.data가 배열인지 확인하고 아닌 경우 빈 배열로 대체
         const rows = Array.isArray(result.data) ? result.data : [];
         return NextResponse.json({ data: rows });
 
-        //여기까지 주석
-    } catch (err) {
+    } catch (err: any) {
+        if (err.name === 'AbortError') {
+            return NextResponse.json({ error: "❌ SQL 실행이 5분을 초과해 중단되었습니다." }, { status: 408 });
+        }
+
         const message = err instanceof Error ? err.message : "서버 오류 발생";
         return NextResponse.json({ error: message }, { status: 500 });
     }
