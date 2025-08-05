@@ -37,52 +37,66 @@ export default function AnalysisPage() {
         try {
             const queryToRun = customQuery || sql;
             setCurrentChartType("table");
-
+    
             const token = sessionStorage.getItem("token");
-
-            const response = await fetch("/api/sql-execute/", {
+    
+            const response = await fetch("/api/sql-execute", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "Accept": "application/json",
+                    Accept: "application/json",
                     ...(token && { Authorization: `Bearer ${token}` }) // 토큰 포함
                 },
                 body: JSON.stringify({ sql: queryToRun })
             });
-
-
-            const result: { data?: ChartRow[]; error?: string; detail?: any } = await response.json();
+    
+            // === content-type 확인 ===
+            const contentType = response.headers.get("content-type") || "";
+            let result: { data?: ChartRow[]; error?: string; detail?: any } = {};
+    
+            if (contentType.includes("application/json")) {
+                result = await response.json();
+            } else {
+                const text = await response.text();
+                // === HTML title 추출 ===
+                const titleMatch = text.match(/<title>(.*?)<\/title>/i);
+                const title = titleMatch ? titleMatch[1] : `HTML 응답 (HTTP ${response.status})`;
+                throw new Error(title);
+            }
+    
             console.log("📦 DuckDNS 응답 전체:", JSON.stringify(result, null, 2));
-
+    
+            // === 서버 상태별 처리 ===
             if (response.status === 422) {
                 const msg = result?.detail?.[0]?.msg || "유효성 오류 발생";
                 throw new Error(`422 오류: ${msg}`);
             }
-
+    
             if (response.status === 400) {
                 throw new Error("❌ 입력한 SQL 문에 문법 오류가 있어 실행할 수 없습니다.");
             }
-
+    
             if (!response.ok || result.error) {
                 throw new Error(result.error || `서버 오류: HTTP ${response.status}`);
             }
-
+    
             if (!Array.isArray(result.data)) {
                 throw new Error("데이터 형식이 올바르지 않습니다.");
             }
-
+    
+            // === 상태 초기화 및 데이터 반영 ===
             setXAxis("");
             setYAxis("");
             setZAxis("");
             setLimit(undefined);
-
+    
             setGlobalData(result.data);
             setColumnNames(
                 Object.keys(result.data[0]).filter(key =>
                     result.data!.some(row => row[key] !== "N/A")
                 )
             );
-
+    
             setCurrentChartType("table");
             setError("");
         } catch (error: unknown) {
@@ -91,7 +105,7 @@ export default function AnalysisPage() {
             setError("❌ SQL 실행 오류: " + message);
         }
     };
-
+    
     useEffect(() => {
         const stored = sessionStorage.getItem("custom_sql");
         if (stored) {

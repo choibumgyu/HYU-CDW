@@ -1,4 +1,3 @@
-// src/app/cohort-result/page.tsx
 'use client';
 
 import { useEffect, useState, useMemo } from "react";
@@ -36,7 +35,6 @@ export default function CohortResultPage() {
 
     useEffect(() => {
         if (!sql) return;
-
         const fetchData = async () => {
             try {
                 setLoading(true);
@@ -54,10 +52,21 @@ export default function CohortResultPage() {
                     body: JSON.stringify({ sql }),
                 });
 
-                const result = await res.json();
+                const contentType = res.headers.get("content-type") || "";
+                let result: any = {};
+                if (contentType.includes("application/json")) {
+                    result = await res.json();
+                } else {
+                    const text = await res.text();
+                    const titleMatch = text.match(/<title>(.*?)<\/title>/i);
+                    const title = titleMatch ? titleMatch[1] : `HTML 응답 (HTTP ${res.status})`;
+                    throw new Error(title);
+                }
+
                 if (!res.ok || result.error) {
                     throw new Error(result.error || `서버 오류: HTTP ${res.status}`);
                 }
+
                 const rows = Array.isArray(result.data) ? result.data : [];
                 setData(rows);
             } catch (err: unknown) {
@@ -67,11 +76,10 @@ export default function CohortResultPage() {
                 setLoading(false);
             }
         };
-
         fetchData();
     }, [sql]);
 
-    const summary = useMemo(() => analyzeDataSummary(data, sql || undefined), [data, sql]);
+    const summary = useMemo(() => analyzeDataSummary(data), [data]);
 
     const SummaryCards = () => {
         if (!summary) return null;
@@ -120,7 +128,7 @@ export default function CohortResultPage() {
     const Charts = () => {
         if (!summary) return null;
         return (
-            <div className="mb-6">
+            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                 {Object.entries(summary).map(([col, info]) => {
                     const label = translateColumn(col);
                     if (info.type === "categorical") {
@@ -129,48 +137,54 @@ export default function CohortResultPage() {
                         const labels = sorted.slice(0, 10).map(([v]) => v);
                         const counts = sorted.slice(0, 10).map(([, c]) => c);
                         return (
-                            <div key={col} className="mb-6">
-                                <h3 className="font-semibold">{label} (상위 10)</h3>
-                                <Bar
-                                    data={{
-                                        labels,
-                                        datasets: [
-                                            {
-                                                label,
-                                                data: counts,
-                                                backgroundColor: "rgba(54, 162, 235, 0.5)",
-                                            },
-                                        ],
-                                    }}
-                                    options={{
-                                        responsive: true,
-                                        plugins: { legend: { display: false } },
-                                    }}
-                                />
+                            <div key={col} className="p-4 border rounded-lg shadow-sm bg-white">
+                                <h3 className="font-semibold mb-2">{label} (상위 10)</h3>
+                                <div className="h-48">
+                                    <Bar
+                                        data={{
+                                            labels,
+                                            datasets: [
+                                                {
+                                                    label,
+                                                    data: counts,
+                                                    backgroundColor: "rgba(54, 162, 235, 0.5)",
+                                                },
+                                            ],
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { display: false } },
+                                        }}
+                                    />
+                                </div>
                             </div>
                         );
                     }
                     if (info.type === "numericContinuous") {
-                        const histLabels = info.distribution.map((_, i) => `${i + 1}`);
+                        const histLabels = info.binLabels || info.distribution.map((_, i) => `${i + 1}`);
                         return (
-                            <div key={col} className="mb-6">
-                                <h3 className="font-semibold">{label} (분포)</h3>
-                                <Bar
-                                    data={{
-                                        labels: histLabels,
-                                        datasets: [
-                                            {
-                                                label,
-                                                data: info.distribution,
-                                                backgroundColor: "rgba(255, 99, 132, 0.5)",
-                                            },
-                                        ],
-                                    }}
-                                    options={{
-                                        responsive: true,
-                                        plugins: { legend: { display: false } },
-                                    }}
-                                />
+                            <div key={col} className="p-4 border rounded-lg shadow-sm bg-white">
+                                <h3 className="font-semibold mb-2">{label} (분포)</h3>
+                                <div className="h-48">
+                                    <Bar
+                                        data={{
+                                            labels: histLabels,
+                                            datasets: [
+                                                {
+                                                    label,
+                                                    data: info.distribution,
+                                                    backgroundColor: "rgba(255, 99, 132, 0.5)",
+                                                },
+                                            ],
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { display: false } },
+                                        }}
+                                    />
+                                </div>
                             </div>
                         );
                     }
@@ -197,8 +211,10 @@ export default function CohortResultPage() {
             {!loading && !error && data.length > 0 && (
                 <>
                     <SummaryCards />
+                    <div className="mb-6">
+                        <DataTable data={data} columns={columnKeys} />
+                    </div>
                     <Charts />
-                    <DataTable data={data} columns={columnKeys} />
                 </>
             )}
         </div>

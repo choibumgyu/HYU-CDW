@@ -28,7 +28,7 @@ export default function Page() {
             sessionStorage.setItem("token", data.access_token);  //토큰 저장 추가.
             window.location.href = "/";
         } else {
-            alert(data.message);
+            alert(data.detail);
         }
     };
 

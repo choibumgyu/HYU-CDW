@@ -1,61 +1,42 @@
-import React from "react";
-import { translateColumn } from "@/utils/translate"; // 경로 확인 필요
+// components/charts/DataTable.tsx
+import { translateColumn } from "@/utils/translate";
 
-interface ChartRow {
-    [key: string]: string | number | null;
+interface DataTableProps {
+    data: Record<string, any>[];
+    columns: string[];
 }
 
-export default function DataTable({
-                                      data,
-                                      columns,
-                                  }: {
-    data: ChartRow[];
-    columns: string[];
-}) {
+export default function DataTable({ data, columns }: DataTableProps) {
     return (
-        <div
-            className="w-full max-w-6xl mx-auto relative"
-            style={{ overflowX: "auto" }}
-        >
-            <div
-                style={{
-                    overflowX: "auto",
-                    overflowY: "hidden",
-                    maxWidth: "100%",
-                }}
-            >
-                <table className="table-auto border-collapse w-full text-sm">
-                    <thead className="bg-gray-100">
+        <div className="overflow-x-auto max-h-[400px] border rounded-lg shadow-sm">
+            <table className="min-w-full border-separate border-spacing-0 border border-gray-300">
+                <thead className="sticky top-0 bg-white z-10">
                     <tr>
-                        {columns.map((col) => (
+                        {columns.map((col, index) => (
                             <th
-                                key={col}
-                                className="px-4 py-2 border font-semibold text-left whitespace-nowrap"
+                                key={index}
+                                className="px-4 py-2 text-left text-sm font-medium border-b border-r border-gray-300 bg-white"
                             >
                                 {translateColumn(col)}
                             </th>
                         ))}
                     </tr>
-                    </thead>
-                    <tbody>
-                    {data.map((row, i) => (
-                        <tr
-                            key={i}
-                            className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}
-                        >
-                            {columns.map((col) => (
+                </thead>
+                <tbody>
+                    {data.map((row, rowIndex) => (
+                        <tr key={rowIndex} className="hover:bg-gray-50">
+                            {columns.map((col, colIndex) => (
                                 <td
-                                    key={col}
-                                    className="px-4 py-1 border whitespace-nowrap"
+                                    key={colIndex}
+                                    className="px-4 py-2 text-sm border-b border-r border-gray-300"
                                 >
                                     {row[col]}
                                 </td>
                             ))}
                         </tr>
                     ))}
-                    </tbody>
-                </table>
-            </div>
+                </tbody>
+            </table>
         </div>
     );
 }
