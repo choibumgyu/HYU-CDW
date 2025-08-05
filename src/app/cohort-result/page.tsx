@@ -4,17 +4,10 @@
 import { useEffect, useState, useMemo } from "react";
 import DataTable from "@/components/charts/DataTable";
 import BackToAiButton from "@/components/ui/BackToAiButton";
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend,
-} from 'chart.js';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import { translateColumn } from "@/utils/translate";
+import { analyzeDataSummary } from "@/utils/analyzeData";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -78,73 +71,7 @@ export default function CohortResultPage() {
         fetchData();
     }, [sql]);
 
-    const summary = useMemo(() => {
-        if (data.length === 0) return null;
-        const result: Record<
-            string,
-            | { type: "id"; uniqueCount: number }
-            | { type: "numericContinuous"; mean: number; min: number; max: number; distribution: number[] }
-            | { type: "categorical"; counts: Record<string, number> }
-        > = {};
-
-        const columns = Object.keys(data[0]);
-        for (const col of columns) {
-            const lower = col.toLowerCase();
-            const isId = lower.endsWith("_id") || lower === "id";
-            if (isId) {
-                const uniqueCount = new Set(data.map((row) => row[col])).size;
-                result[col] = { type: "id", uniqueCount };
-                continue;
-            }
-
-            const values = data.map((row) => row[col]);
-            const numericValues = values.filter(
-                (v) => typeof v === "number" && !isNaN(v as number)
-            ) as number[];
-            if (numericValues.length > 0) {
-                const uniqueNumeric = Array.from(new Set(numericValues));
-                const DISCRETE_THRESHOLD = 15;
-                if (uniqueNumeric.length <= DISCRETE_THRESHOLD) {
-                    const counts: Record<string, number> = {};
-                    numericValues.forEach((v) => {
-                        const key = v.toString();
-                        counts[key] = (counts[key] || 0) + 1;
-                    });
-                    result[col] = { type: "categorical", counts };
-                } else {
-                    const mean =
-                        numericValues.reduce((sum, v) => sum + v, 0) / numericValues.length;
-                    const min = Math.min(...numericValues);
-                    const max = Math.max(...numericValues);
-                    const bins = 10;
-                    const range = max - min || 1;
-                    const distribution = Array(bins).fill(0);
-                    numericValues.forEach((v) => {
-                        const index = Math.min(
-                            bins - 1,
-                            Math.floor(((v - min) / range) * bins)
-                        );
-                        distribution[index]++;
-                    });
-                    result[col] = {
-                        type: "numericContinuous",
-                        mean,
-                        min,
-                        max,
-                        distribution,
-                    };
-                }
-            } else {
-                const counts: Record<string, number> = {};
-                values.forEach((v) => {
-                    const key = (v === null || v === undefined ? "NULL" : v).toString();
-                    counts[key] = (counts[key] || 0) + 1;
-                });
-                result[col] = { type: "categorical", counts };
-            }
-        }
-        return result;
-    }, [data]);
+    const summary = useMemo(() => analyzeDataSummary(data, sql || undefined), [data, sql]);
 
     const SummaryCards = () => {
         if (!summary) return null;
