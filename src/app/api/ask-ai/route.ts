@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { setTimeout } from 'timers/promises'; // Node.js 내장 타이머
+//import { setTimeout } from 'timers/promises'; // Node.js 내장 타이머
 
 export async function POST(req: NextRequest) {
     const { question } = await req.json();
