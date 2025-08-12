@@ -3,6 +3,8 @@
 import Layout from "@/components/layout/Layout";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function HomePage() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -14,6 +16,21 @@ export default function HomePage() {
     useEffect(() => {
         const token = sessionStorage.getItem("token");
         setIsLoggedIn(!!token);
+    }, []);
+
+    useEffect(() => {
+        const raw = sessionStorage.getItem("flashToast");
+        if (!raw) return;
+        try {
+          const { level, message } = JSON.parse(raw);
+          if (level === "success") toast.success(message || "완료!");
+          else if (level === "error") toast.error(message || "에러가 발생했습니다.");
+          else toast.info(message || "알림");
+        } catch {
+          // 파싱 실패 시 무시
+        } finally {
+          sessionStorage.removeItem("flashToast"); // 한 번만 뜨게 제거
+        }
     }, []);
 
     const handleStartAnalysis = () => {
@@ -115,6 +132,7 @@ export default function HomePage() {
                     </div>
                 </div>
             </div>
+            <ToastContainer position="top-center" autoClose={2000} hideProgressBar />
         </Layout>
     );
 }

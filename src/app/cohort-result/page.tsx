@@ -7,6 +7,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Toolti
 import { Bar } from 'react-chartjs-2';
 import { translateColumn } from "@/utils/translate";
 import { analyzeDataSummary } from "@/utils/analyzeData";
+import { buildAliasMap } from "@/utils/sqlAliasMap";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -79,49 +80,55 @@ export default function CohortResultPage() {
         fetchData();
     }, [sql]);
 
-    const summary = useMemo(() => analyzeDataSummary(data), [data]);
+    const summary = useMemo(() => {
+        const aliasMap = sql ? buildAliasMap(sql) : undefined;
+        return analyzeDataSummary(data, aliasMap);
+    }, [data, sql]);
 
     const SummaryCards = () => {
         if (!summary) return null;
+        const entries = Object.entries(summary);
+      
         return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                {Object.entries(summary).map(([col, info]) => {
-                    const label = translateColumn(col);
-                    if (info.type === "numericContinuous") {
-                        return (
-                            <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
-                                <h3 className="font-semibold mb-2">{label}</h3>
-                                <p>평균: {info.mean.toFixed(2)}</p>
-                                <p>최소: {info.min}</p>
-                                <p>최대: {info.max}</p>
-                            </div>
-                        );
-                    }
-                    if (info.type === "id") {
-                        return (
-                            <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
-                                <h3 className="font-semibold mb-2">{label}</h3>
-                                <p>고유값 개수: {info.uniqueCount}</p>
-                            </div>
-                        );
-                    }
-                    if (info.type === "categorical") {
-                        const entries = Object.entries(info.counts)
-                            .sort((a, b) => b[1] - a[1])
-                            .slice(0, 5);
-                        return (
-                            <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
-                                <h3 className="font-semibold mb-2">{label}</h3>
-                                {entries.map(([val, count]) => (
-                                    <p key={val}>
-                                        {val}: {count}
-                                    </p>
-                                ))}
-                            </div>
-                        );
-                    }
-                })}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {/* 총 데이터 카드 */}
+            <div className="border rounded-lg p-4 shadow-sm bg-white">
+                <h3 className="font-semibold mb-2">총 데이터</h3>
+                <p>{data.length} 건</p>
             </div>
+      
+            {/* 2) 나머지 요약 카드 */}
+            {entries.map(([col, info]) => {
+              const label = translateColumn(col);
+      
+              if ((info as any).type === "numericContinuous") {
+                const n = info as any;
+                return (
+                  <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
+                    <h3 className="font-semibold mb-2">{label}</h3>
+                    <p>평균: {n.mean.toFixed(2)}</p>
+                    <p>최소: {n.min}</p>
+                    <p>최대: {n.max}</p>
+                  </div>
+                );
+              }
+      
+              if ((info as any).type === "categorical") {
+                const n = info as any;
+                const top = Object.entries(n.counts).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 5);
+                return (
+                  <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
+                    <h3 className="font-semibold mb-2">{label}</h3>
+                    {top.map(([val, count]) => (
+                      <p key={val}>{val}: {count as number}</p>
+                    ))}
+                  </div>
+                );
+              }
+      
+              return null;
+            })}
+          </div>
         );
     };
 
