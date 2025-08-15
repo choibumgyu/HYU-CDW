@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react"; // useRef 포함
 import DataTable from "@/components/charts/DataTable";
 import BackToAiButton from "@/components/ui/BackToAiButton";
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
@@ -24,6 +24,8 @@ export default function CohortResultPage() {
     const [data, setData] = useState<RowData[]>([]);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const abortRef = useRef<AbortController | null>(null);
+    const [execToken, setExecToken] = useState<string | null>(null);
 
     useEffect(() => {
         const storedSql = sessionStorage.getItem("cohort_sql");
@@ -37,6 +39,8 @@ export default function CohortResultPage() {
     useEffect(() => {
         if (!sql) return;
         const fetchData = async () => {
+            const ac = new AbortController();
+            abortRef.current = ac;
             try {
                 setLoading(true);
                 setError("");
@@ -51,6 +55,7 @@ export default function CohortResultPage() {
                         ...(token && { Authorization: `Bearer ${token}` })
                     },
                     body: JSON.stringify({ sql }),
+                    signal: ac.signal,
                 });
 
                 const contentType = res.headers.get("content-type") || "";
@@ -68,16 +73,28 @@ export default function CohortResultPage() {
                     throw new Error(result.error || `서버 오류: HTTP ${res.status}`);
                 }
 
+                setExecToken(result.token ?? result.executionId ?? null);
+
                 const rows = Array.isArray(result.data) ? result.data : [];
                 setData(rows);
-            } catch (err: unknown) {
-                const message = err instanceof Error ? err.message : "알 수 없는 오류";
-                setError(message);
+            } catch (err: any) {
+                if (err?.name === "AbortError") {
+                    setError("실행이 중지되었습니다.");
+                } else {
+                    const message = err instanceof Error ? err.message : "알 수 없는 오류";
+                    setError(message);
+                }
             } finally {
                 setLoading(false);
+                abortRef.current = null;
             }
         };
         fetchData();
+
+        // SQL 변경/언마운트 시 진행 중 요청 취소
+        return () => {
+            abortRef.current?.abort();
+        };
     }, [sql]);
 
     const summary = useMemo(() => {
@@ -88,47 +105,45 @@ export default function CohortResultPage() {
     const SummaryCards = () => {
         if (!summary) return null;
         const entries = Object.entries(summary);
-      
+
         return (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            {/* 총 데이터 카드 */}
-            <div className="border rounded-lg p-4 shadow-sm bg-white">
-                <h3 className="font-semibold mb-2">총 데이터</h3>
-                <p>{data.length} 건</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                <div className="border rounded-lg p-4 shadow-sm bg-white">
+                    <h3 className="font-semibold mb-2">총 데이터</h3>
+                    <p>{data.length} 건</p>
+                </div>
+
+                {entries.map(([col, info]) => {
+                    const label = translateColumn(col);
+
+                    if ((info as any).type === "numericContinuous") {
+                        const n = info as any;
+                        return (
+                            <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
+                                <h3 className="font-semibold mb-2">{label}</h3>
+                                <p>평균: {n.mean.toFixed(2)}</p>
+                                <p>최소: {n.min}</p>
+                                <p>최대: {n.max}</p>
+                            </div>
+                        );
+                    }
+
+                    if ((info as any).type === "categorical") {
+                        const n = info as any;
+                        const top = Object.entries(n.counts).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 5);
+                        return (
+                            <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
+                                <h3 className="font-semibold mb-2">{label}</h3>
+                                {top.map(([val, count]) => (
+                                    <p key={val}>{val}: {count as number}</p>
+                                ))}
+                            </div>
+                        );
+                    }
+
+                    return null;
+                })}
             </div>
-      
-            {/* 2) 나머지 요약 카드 */}
-            {entries.map(([col, info]) => {
-              const label = translateColumn(col);
-      
-              if ((info as any).type === "numericContinuous") {
-                const n = info as any;
-                return (
-                  <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
-                    <h3 className="font-semibold mb-2">{label}</h3>
-                    <p>평균: {n.mean.toFixed(2)}</p>
-                    <p>최소: {n.min}</p>
-                    <p>최대: {n.max}</p>
-                  </div>
-                );
-              }
-      
-              if ((info as any).type === "categorical") {
-                const n = info as any;
-                const top = Object.entries(n.counts).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 5);
-                return (
-                  <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
-                    <h3 className="font-semibold mb-2">{label}</h3>
-                    {top.map(([val, count]) => (
-                      <p key={val}>{val}: {count as number}</p>
-                    ))}
-                  </div>
-                );
-              }
-      
-              return null;
-            })}
-          </div>
         );
     };
 
@@ -171,7 +186,7 @@ export default function CohortResultPage() {
                     if (info.type === "numericContinuous") {
                         const histLabels = info.binLabels || info.distribution.map((_, i) => `${i + 1}`);
                         return (
-                            <div key={col} className="p-4 border rounded-lg shadow-sm bg-white">
+                            <div key={col} className="p-4 border rounded-lg shadow_sm bg-white">
                                 <h3 className="font-semibold mb-2">{label} (분포)</h3>
                                 <div className="h-48">
                                     <Bar
@@ -203,10 +218,47 @@ export default function CohortResultPage() {
 
     const columnKeys = data.length > 0 ? Object.keys(data[0]) : [];
 
+    const handleStop = async () => {
+        try {
+            const auth = sessionStorage.getItem("token");
+            if (execToken) {
+                await fetch("/api/sql-execute/cancel", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(auth && { Authorization: `Bearer ${auth}` }),
+                    },
+                    body: JSON.stringify({ token: execToken }), // 백엔드 스펙이 executionId면 키만 변경
+                });
+            }
+        } catch (e) {
+            console.warn("cancel API 호출 실패(무시 가능):", e);
+        } finally {
+            abortRef.current?.abort();   // 즉시 프론트 요청 중지
+            setExecToken(null);
+        }
+    };
+
     return (
         <div className="max-w-7xl mx-auto p-6">
-            <BackToAiButton />
-            <h1 className="text-2xl font-bold mb-4">🧬 코호트 분석</h1>
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                    <BackToAiButton />
+                    <h1 className="text-2xl font-bold">🧬 코호트 분석</h1>
+                </div>
+
+                {loading && (
+                    <button
+                        type="button"
+                        onClick={handleStop}
+                        className="px-3 py-1.5 rounded shadow-sm text-white bg-red-600 hover:bg-red-700"
+                        aria-label="실행 중지"
+                    >
+                        실행 중지
+                    </button>
+                )}
+            </div>
+
 
             {loading && <p className="text-gray-500">데이터 불러오는 중...</p>}
             {error && <p className="text-red-600 font-semibold">{error}</p>}
