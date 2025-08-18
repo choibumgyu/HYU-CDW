@@ -32,14 +32,24 @@ export default function AnalysisPage() {
     const [error, setError] = useState<string>("");
     const [chartInstance, setChartInstance] = useState<echarts.ECharts | null>(null);
     const [showScrollTop, setShowScrollTop] = useState(false);
+    const abortRef = useRef<AbortController | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [cancelled, setCancelled] = useState(false);
+
 
     const fetchChartData = async (customQuery?: string) => {
+        const ac = new AbortController();
+        abortRef.current = ac;
+
         try {
+            setCancelled(false);
+            setLoading(true);
+            setError("");
+
             const queryToRun = customQuery || sql;
             setCurrentChartType("table");
-    
+
             const token = sessionStorage.getItem("token");
-    
             const response = await fetch("/api/sql-execute", {
                 method: "POST",
                 headers: {
@@ -47,13 +57,14 @@ export default function AnalysisPage() {
                     Accept: "application/json",
                     ...(token && { Authorization: `Bearer ${token}` }) // 토큰 포함
                 },
-                body: JSON.stringify({ sql: queryToRun })
+                body: JSON.stringify({ sql: queryToRun }),
+                signal: ac.signal,
             });
-    
+
             // === content-type 확인 ===
             const contentType = response.headers.get("content-type") || "";
             let result: { data?: ChartRow[]; error?: string; detail?: any } = {};
-    
+
             if (contentType.includes("application/json")) {
                 result = await response.json();
             } else {
@@ -63,49 +74,77 @@ export default function AnalysisPage() {
                 const title = titleMatch ? titleMatch[1] : `HTML 응답 (HTTP ${response.status})`;
                 throw new Error(title);
             }
-    
+
             console.log("📦 DuckDNS 응답 전체:", JSON.stringify(result, null, 2));
-    
+
             // === 서버 상태별 처리 ===
             if (response.status === 422) {
                 const msg = result?.detail?.[0]?.msg || "유효성 오류 발생";
                 throw new Error(`422 오류: ${msg}`);
             }
-    
+
             if (response.status === 400) {
                 throw new Error("❌ 입력한 SQL 문에 문법 오류가 있어 실행할 수 없습니다.");
             }
-    
+
             if (!response.ok || result.error) {
                 throw new Error(result.error || `서버 오류: HTTP ${response.status}`);
             }
-    
+
             if (!Array.isArray(result.data)) {
                 throw new Error("데이터 형식이 올바르지 않습니다.");
             }
-    
+
+
             // === 상태 초기화 및 데이터 반영 ===
             setXAxis("");
             setYAxis("");
             setZAxis("");
             setLimit(undefined);
-    
+
             setGlobalData(result.data);
             setColumnNames(
                 Object.keys(result.data[0]).filter(key =>
                     result.data!.some(row => row[key] !== "N/A")
                 )
             );
-    
+
             setCurrentChartType("table");
             setError("");
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : "알 수 없는 오류";
             console.error("SQL 실행 오류:", message);
             setError("❌ SQL 실행 오류: " + message);
+        } finally {
+            setLoading(false);
+            abortRef.current = null;
         }
     };
-    
+
+    const handleStop = async () => {
+        try {
+            const auth = sessionStorage.getItem("token");
+            await fetch("/api/sql-execute/cancel", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(auth && { Authorization: `Bearer ${auth}` }),
+                },
+            });
+        } catch (e) {
+            console.warn("cancel API 호출 실패:", e);
+        } finally {
+            abortRef.current?.abort(); // 프론트 요청 중지
+            setCancelled(true);
+            setError("실행이 중지되었습니다.");
+            setLoading(false);
+            setGlobalData([]);
+            setColumnNames([]);
+            setCurrentChartType(null);
+        }
+    };
+
+
     useEffect(() => {
         const stored = sessionStorage.getItem("custom_sql");
         if (stored) {
@@ -198,192 +237,243 @@ export default function AnalysisPage() {
     return (
         <div className="font-sans text-center">
             <BackToAiButton />
-            <h1 className="text-3xl font-bold mt-6">CDW 데이터 시각화</h1>
+            <div className="flex items-center justify-center gap-4 mt-6">
+                <h1 className="text-3xl font-bold">CDW 데이터 시각화</h1>
+
+                {loading && (
+                    <button
+                        onClick={handleStop}
+                        className="px-3 py-1.5 rounded shadow-sm text-white bg-red-600 hover:bg-red-700"
+                        aria-label="실행 중지"
+                    >
+                        실행 중지
+                    </button>
+                )}
+            </div>
+
+            {cancelled && (
+                <div className="mt-4 text-gray-600 font-semibold">실행이 중지되었습니다.</div>
+            )}
 
             {/* 쿼리 입력 */}
-            <div className="w-4/5 mx-auto my-4 flex flex-col items-end bg-white p-4 rounded-lg">
-                <textarea
-                    rows={4}
-                    placeholder="SQL 쿼리를 입력하세요."
-                    className="w-full mb-2 border rounded p-2"
-                    value={sql}
-                    onChange={(e) => setSql(e.target.value)}
-                />
-                <button
-                    onClick={() => fetchChartData()}
-                    title="쿼리 실행"
-                    className="w-10 h-10 flex items-center justify-center text-xl border rounded-full bg-gray-100 hover:bg-gray-200 active:bg-gray-300"
-                >
-                    ▶
-                </button>
-            </div>
+            {!loading && !cancelled && (
+                <>
+                    <div className="w-4/5 mx-auto my-4 flex flex-col items-end bg-white p-4 rounded-lg">
+                    <textarea
+                        rows={4}
+                        placeholder="SQL 쿼리를 입력하세요."
+                        className="w-full mb-2 border rounded p-2"
+                        value={sql}
+                        onChange={(e) => setSql(e.target.value)}
+                    />
+                        <button
+                            onClick={() => fetchChartData()}
+                            title="쿼리 실행"
+                            className="w-10 h-10 flex items-center justify-center text-xl border rounded-full bg-gray-100 hover:bg-gray-200 active:bg-gray-300"
+                        >
+                            ▶
+                        </button>
+                    </div>
 
-            {error && (
-                <div className="text-red-600 font-semibold mb-4">{error}</div>
-            )}
+                    {!loading && !cancelled && error && (
+                        <div className="text-red-600 font-semibold mb-4">{error}</div>
+                    )}
 
-            {/* 축 선택 */}
-            <div className="flex justify-center gap-4 flex-wrap mt-4">
-                {["xAxis", "yAxis", currentChartType === "bar3D" ? "zAxis" : null]
-                    .filter(Boolean)
-                    .map((axis) => {
-                        const value =
-                            axis === "xAxis" ? xAxis : axis === "yAxis" ? yAxis : zAxis;
-                        const setter =
-                            axis === "xAxis" ? setXAxis : axis === "yAxis" ? setYAxis : setZAxis;
-                        const label = axis!.charAt(0).toUpperCase();
+                    {/* 축 선택 */}
+                    {!loading && !cancelled && (
+                        <div className="flex justify-center gap-4 flex-wrap mt-4">
+                            {["xAxis", "yAxis", currentChartType === "bar3D" ? "zAxis" : null]
+                                .filter(Boolean)
+                                .map((axis) => {
+                                    const value =
+                                        axis === "xAxis" ? xAxis : axis === "yAxis" ? yAxis : zAxis;
+                                    const setter =
+                                        axis === "xAxis" ? setXAxis : axis === "yAxis" ? setYAxis : setZAxis;
+                                    const label = axis!.charAt(0).toUpperCase();
 
-                        return (
-                            <div
-                                key={axis}
-                                className="relative inline-block w-auto min-w-[8rem] max-w-[20rem]"
-                                title={`${translateColumn(value)} (${label}축 선택)`}
-                                onMouseEnter={() => setHoveredAxis(axis!)}
-                                onMouseLeave={() => setHoveredAxis(null)}
-                            >
-                                <select
-                                    value={value}
-                                    onChange={(e) => setter(e.target.value)}
-                                    className="appearance-none w-full border border-gray-300 rounded-full px-4 py-2 pr-10 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
-                                >
-                                    <option value="">{label}</option>
-                                    {columnNames.map((name) => (
-                                        <option key={name} value={name}>
-                                            {translateColumn(name)}
-                                        </option>
-                                    ))}
-                                </select>
-                                <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-gray-400">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </div>
-                                {hoveredAxis === axis && value && (
-                                    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50">
-                                        {renderSummaryTooltip(value)}
-                                    </div>
+                                    return (
+                                        <div
+                                            key={axis}
+                                            className="relative inline-block w-auto min-w-[8rem] max-w-[20rem]"
+                                            title={`${translateColumn(value)} (${label}축 선택)`}
+                                            onMouseEnter={() => setHoveredAxis(axis!)}
+                                            onMouseLeave={() => setHoveredAxis(null)}
+                                        >
+                                            <select
+                                                value={value}
+                                                onChange={(e) => setter(e.target.value)}
+                                                className="appearance-none w-full border border-gray-300 rounded-full px-4 py-2 pr-10 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                                            >
+                                                <option value="">{label}</option>
+                                                {columnNames.map((name) => (
+                                                    <option key={name} value={name}>
+                                                        {translateColumn(name)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-gray-400">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            </div>
+                                            {hoveredAxis === axis && value && (
+                                                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50">
+                                                    {renderSummaryTooltip(value)}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                        </div>
+                    )}
+
+
+
+                    {/* 데이터 제한 */}
+                    {!loading && (
+                        <div className="my-6 flex justify-center">
+                            <div className="text-left">
+                                <input
+                                    type="number"
+                                    min={1}
+                                    value={limit || ""}
+                                    onChange={(e) => {
+                                        const value = parseInt(e.target.value);
+                                        setLimit(isNaN(value) ? undefined : value);
+                                    }}
+                                    className="border rounded px-2 py-1 w-24"
+                                    placeholder="Top N"
+                                />
+                                {globalData.length > 0 && (
+                                    <p className="text-xs text-gray-400 mt-1 text-center">
+                                        총 {globalData.length}개 데이터
+                                    </p>
                                 )}
                             </div>
-                        );
-                    })}
-            </div>
-
-
-            {/* 데이터 제한 */}
-            <div className="my-6 flex justify-center">
-                <div className="text-left">
-                    <input
-                        type="number"
-                        min={1}
-                        value={limit || ""}
-                        onChange={(e) => {
-                            const value = parseInt(e.target.value);
-                            setLimit(isNaN(value) ? undefined : value);
-                        }}
-                        className="border rounded px-2 py-1 w-24"
-                        placeholder="Top N"
-                    />
-                    {globalData.length > 0 && (
-                        <p className="text-xs text-gray-400 mt-1 text-center">
-                            총 {globalData.length}개 데이터
-                        </p>
+                        </div>
                     )}
-                </div>
-            </div>
 
-            {/* 차트 선택 */}
-            <div className="flex justify-center flex-wrap gap-4 mt-8">
-                <ChartButton
-                    label={<img src="/images/bar.png" title="Bar Chart" className="w-8 h-8" />}
-                    onClick={() => setCurrentChartType("bar")}
-                />
-                <ChartButton
-                    label={<img src="/images/line.png" title="Line Chart" className="w-8 h-8" />}
-                    onClick={() => setCurrentChartType("line")}
-                />
-                <ChartButton
-                    label={<img src="/images/scatter.png" title="Scatter Chart" className="w-8 h-8" />}
-                    onClick={() => setCurrentChartType("scatter")}
-                />
-                <ChartButton
-                    label={<img src="/images/bar.png" title="3D Bar Chart" className="w-8 h-8" />}
-                    onClick={() => setCurrentChartType("bar3D")}
-                />
-                <ChartButton
-                    label={<img src="/images/pie.png" title="Pie Chart" className="w-8 h-8" />}
-                    onClick={() => setCurrentChartType("pie")}
-                />
-                <ChartButton
-                    label={<img src="/images/table.png" title="Table View" className="w-8 h-8" />}
-                    onClick={() => setCurrentChartType("table")}
-                />
-            </div>
+                    {!loading && (
+                        <>
+                            <div className="my-6 flex justify-center">
+                                <div className="text-left">
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        value={limit || ""}
+                                        onChange={(e) => {
+                                            const value = parseInt(e.target.value);
+                                            setLimit(isNaN(value) ? undefined : value);
+                                        }}
+                                        className="border rounded px-2 py-1 w-24"
+                                        placeholder="Top N"
+                                    />
+                                    {globalData.length > 0 && (
+                                        <p className="text-xs text-gray-400 mt-1 text-center">
+                                            총 {globalData.length}개 데이터
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
 
-            {/* 차트 렌더링 */}
-            {filteredData.length > 0 ? (
-                currentChartType === "bar" ? (
-                    <BarChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
-                ) : currentChartType === "line" ? (
-                    <LineChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
-                ) : currentChartType === "scatter" ? (
-                    <ScatterChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
-                ) : currentChartType === "pie" ? (
-                    <PieChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
-                ) : currentChartType === "bar3D" ? (
-                    <Bar3dChart xAxis={xAxis} yAxis={yAxis} zAxis={zAxis} data={filteredData} setChartInstance={setChartInstance} />
-                ) : currentChartType === "table" ? (
-                    <DataTable data={filteredData} columns={columnNames} />
-                ) : (
-                    <div ref={chartRef} className="relative w-4/5 h-[500px] mx-auto my-4" />
-                )
-            ) : (
-                <div className="w-4/5 h-[400px] mx-auto mt-8 flex items-center justify-center text-gray-500 text-sm">
-                    <div className="text-center">
-                        <div className="animate-pulse text-4xl mb-2">📭</div>
-                        <p className="text-base font-semibold">조회된 데이터가 없습니다</p>
-                        <p className="text-sm text-gray-600 font-medium mt-1">
-                            SQL을 수정하거나 축을 선택하세요
-                        </p>
+                            {/* 차트 선택 */}
+                            <div className="flex justify-center flex-wrap gap-4 mt-8">
+                                <ChartButton
+                                    label={<img src="/images/bar.png" title="Bar Chart" className="w-8 h-8" />}
+                                    onClick={() => setCurrentChartType("bar")}
+                                />
+                                <ChartButton
+                                    label={<img src="/images/line.png" title="Line Chart" className="w-8 h-8" />}
+                                    onClick={() => setCurrentChartType("line")}
+                                />
+                                <ChartButton
+                                    label={<img src="/images/scatter.png" title="Scatter Chart" className="w-8 h-8" />}
+                                    onClick={() => setCurrentChartType("scatter")}
+                                />
+                                <ChartButton
+                                    label={<img src="/images/bar.png" title="3D Bar Chart" className="w-8 h-8" />}
+                                    onClick={() => setCurrentChartType("bar3D")}
+                                />
+                                <ChartButton
+                                    label={<img src="/images/pie.png" title="Pie Chart" className="w-8 h-8" />}
+                                    onClick={() => setCurrentChartType("pie")}
+                                />
+                                <ChartButton
+                                    label={<img src="/images/table.png" title="Table View" className="w-8 h-8" />}
+                                    onClick={() => setCurrentChartType("table")}
+                                />
+                            </div>
+                        </>
+                    )}
+
+
+                    {/* 차트 렌더링 */}
+                    {filteredData.length > 0 ? (
+                        currentChartType === "bar" ? (
+                            <BarChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
+                        ) : currentChartType === "line" ? (
+                            <LineChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
+                        ) : currentChartType === "scatter" ? (
+                            <ScatterChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
+                        ) : currentChartType === "pie" ? (
+                            <PieChart xAxis={xAxis} yAxis={yAxis} data={filteredData} setChartInstance={setChartInstance} />
+                        ) : currentChartType === "bar3D" ? (
+                            <Bar3dChart xAxis={xAxis} yAxis={yAxis} zAxis={zAxis} data={filteredData} setChartInstance={setChartInstance} />
+                        ) : currentChartType === "table" ? (
+                            <DataTable data={filteredData} columns={columnNames} />
+                        ) : (
+                            <div ref={chartRef} className="relative w-4/5 h-[500px] mx-auto my-4" />
+                        )
+                    ) : (
+                        <div className="w-4/5 h-[400px] mx-auto mt-8 flex items-center justify-center text-gray-500 text-sm">
+                            <div className="text-center">
+                                <div className="animate-pulse text-4xl mb-2">📭</div>
+                                <p className="text-base font-semibold">조회된 데이터가 없습니다</p>
+                                <p className="text-sm text-gray-600 font-medium mt-1">
+                                    SQL을 수정하거나 축을 선택하세요
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 다운로드 버튼 */}
+                    <div className="fixed top-[80px] right-6 flex gap-2 z-30">
+                        <button
+                            onClick={downloadChartImage}
+                            title="그래프 다운로드"
+                            className={`flex items-center gap-1 px-3 py-1 text-sm rounded-full shadow transition ${
+                                currentChartType === "table"
+                                    ? "bg-gray-300 text-white cursor-not-allowed pointer-events-none"
+                                    : "bg-cyan-500 hover:bg-cyan-600 text-white"
+                            }`}
+                        >
+                            📈 <span className="hidden sm:inline">차트</span>
+                        </button>
+
+                        <button
+                            onClick={downloadCSV}
+                            title="CSV 다운로드"
+                            className="flex items-center gap-1 px-3 py-1 text-sm bg-cyan-500 hover:bg-cyan-600 text-white rounded-full shadow"
+                        >
+                            📄 <span className="hidden sm:inline">CSV</span>
+                        </button>
                     </div>
-                </div>
+
+                    {/* TOP 버튼 */}
+                    {currentChartType === "table" && showScrollTop && (
+                        <div className="fixed bottom-6 right-6 z-30">
+                            <button
+                                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                                title="맨 위로"
+                                className="flex items-center justify-center px-3 py-2 text-sm bg-gray-500 hover:bg-gray-600 text-white rounded-full shadow"
+                            >
+                                TOP
+                            </button>
+                        </div>
+                    )}
+                </>
             )}
-
-            {/* 다운로드 버튼 */}
-            <div className="fixed top-[80px] right-6 flex gap-2 z-30">
-                <button
-                    onClick={downloadChartImage}
-                    title="그래프 다운로드"
-                    className={`flex items-center gap-1 px-3 py-1 text-sm rounded-full shadow transition ${
-                        currentChartType === "table"
-                            ? "bg-gray-300 text-white cursor-not-allowed pointer-events-none"
-                            : "bg-cyan-500 hover:bg-cyan-600 text-white"
-                    }`}
-                >
-                    📈 <span className="hidden sm:inline">차트</span>
-                </button>
-
-                <button
-                    onClick={downloadCSV}
-                    title="CSV 다운로드"
-                    className="flex items-center gap-1 px-3 py-1 text-sm bg-cyan-500 hover:bg-cyan-600 text-white rounded-full shadow"
-                >
-                    📄 <span className="hidden sm:inline">CSV</span>
-                </button>
             </div>
-
-            {/* TOP 버튼 */}
-            {currentChartType === "table" && showScrollTop && (
-                <div className="fixed bottom-6 right-6 z-30">
-                    <button
-                        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                        title="맨 위로"
-                        className="flex items-center justify-center px-3 py-2 text-sm bg-gray-500 hover:bg-gray-600 text-white rounded-full shadow"
-                    >
-                        TOP
-                    </button>
-                </div>
-            )}
-        </div>
     );
 }
 

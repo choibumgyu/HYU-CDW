@@ -25,7 +25,6 @@ export default function CohortResultPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
-    const [execToken, setExecToken] = useState<string | null>(null);
 
     useEffect(() => {
         const storedSql = sessionStorage.getItem("cohort_sql");
@@ -58,6 +57,7 @@ export default function CohortResultPage() {
                     signal: ac.signal,
                 });
 
+
                 const contentType = res.headers.get("content-type") || "";
                 let result: any = {};
                 if (contentType.includes("application/json")) {
@@ -73,7 +73,7 @@ export default function CohortResultPage() {
                     throw new Error(result.error || `서버 오류: HTTP ${res.status}`);
                 }
 
-                setExecToken(result.token ?? result.executionId ?? null);
+
 
                 const rows = Array.isArray(result.data) ? result.data : [];
                 setData(rows);
@@ -221,21 +221,21 @@ export default function CohortResultPage() {
     const handleStop = async () => {
         try {
             const auth = sessionStorage.getItem("token");
-            if (execToken) {
-                await fetch("/api/sql-execute/cancel", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        ...(auth && { Authorization: `Bearer ${auth}` }),
-                    },
-                    body: JSON.stringify({ token: execToken }), // 백엔드 스펙이 executionId면 키만 변경
-                });
-            }
+            await fetch("/api/sql-execute/cancel", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(auth && { Authorization: `Bearer ${auth}` }),
+                },
+            });
+
         } catch (e) {
             console.warn("cancel API 호출 실패(무시 가능):", e);
         } finally {
             abortRef.current?.abort();   // 즉시 프론트 요청 중지
-            setExecToken(null);
+            setLoading(false);
+            setData([]);           // 결과 숨김
+            setError("실행이 중지되었습니다."); // 안내문
         }
     };
 
