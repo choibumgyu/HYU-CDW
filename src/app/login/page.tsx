@@ -25,11 +25,12 @@ export default function Page() {
 
         if (response.ok) {
             // (로그인 성공 분기)
+            /*
             sessionStorage.setItem(
                 "flashToast",
                 JSON.stringify({ level: "success", message: data.message || "로그인 성공" })
             );
-            
+            */
             sessionStorage.setItem("token", data.access_token);  //토큰 저장 추가.
             window.location.href = "/";
         } else {
