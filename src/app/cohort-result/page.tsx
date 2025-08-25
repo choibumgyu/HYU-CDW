@@ -1,19 +1,25 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from "react"; // useRef 포함
+import { useEffect, useState, useMemo, useRef } from "react";
 import DataTable from "@/components/charts/DataTable";
 import BackToAiButton from "@/components/ui/BackToAiButton";
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
-import { Bar } from 'react-chartjs-2';
 import { translateColumn } from "@/utils/translate";
-import { analyzeDataSummary } from "@/utils/analyzeData";
+import { analyzeDataSummary, isSensitiveIdentifierName } from "@/utils/analyzeData";
 import { buildAliasMap } from "@/utils/sqlAliasMap";
+import { detectPreAggregated } from "@/utils/detectPreAggregated";
+import { getTopChartSpec } from "@/utils/chartRules";
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+import NumericHistogramChart from "@/components/charts/NumericHistogramChart";
+import { TopNCategoryChart } from "@/components/charts/TopNCategoryChart";
+import { TopNByNumericChart } from "@/components/charts/TopNByNumericChart";
 
 interface RowData {
     [key: string]: string | number | null;
 }
+
+type SummaryValue =
+    | { type: "numericContinuous"; mean: number; min: number; max: number; distribution: number[]; binLabels: string[] }
+    | { type: "categorical"; counts: Record<string, number> };
 
 function isSQL(query: string): boolean {
     return /^\s*select\b/i.test(query.trim());
@@ -28,195 +34,85 @@ export default function CohortResultPage() {
 
     useEffect(() => {
         const storedSql = sessionStorage.getItem("cohort_sql");
-        if (storedSql && isSQL(storedSql)) {
-            setSql(storedSql);
-        } else {
-            setError("❌ SQL이 제공되지 않았거나 유효하지 않습니다.");
-        }
+        if (storedSql && isSQL(storedSql)) setSql(storedSql);
+        else setError("❌ SQL이 제공되지 않았거나 유효하지 않습니다.");
     }, []);
 
     useEffect(() => {
         if (!sql) return;
-        const fetchData = async () => {
-            const ac = new AbortController();
-            abortRef.current = ac;
+        const ac = new AbortController();
+        abortRef.current = ac;
+
+        (async () => {
             try {
                 setLoading(true);
                 setError("");
 
                 const token = sessionStorage.getItem("token");
-
                 const res = await fetch("/api/sql-execute", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
-                        ...(token && { Authorization: `Bearer ${token}` })
+                        ...(token && { Authorization: `Bearer ${token}` }),
                     },
                     body: JSON.stringify({ sql }),
                     signal: ac.signal,
                 });
 
+                const ct = res.headers.get("content-type") || "";
+                const payload = ct.includes("application/json") ? await res.json() : (() => { throw new Error(`HTML 응답 (HTTP ${res.status})`); })();
 
-                const contentType = res.headers.get("content-type") || "";
-                let result: any = {};
-                if (contentType.includes("application/json")) {
-                    result = await res.json();
-                } else {
-                    const text = await res.text();
-                    const titleMatch = text.match(/<title>(.*?)<\/title>/i);
-                    const title = titleMatch ? titleMatch[1] : `HTML 응답 (HTTP ${res.status})`;
-                    throw new Error(title);
-                }
-
-                if (!res.ok || result.error) {
-                    throw new Error(result.error || `서버 오류: HTTP ${res.status}`);
-                }
-
-
-
-                const rows = Array.isArray(result.data) ? result.data : [];
-                setData(rows);
-            } catch (err: any) {
-                if (err?.name === "AbortError") {
-                    setError("실행이 중지되었습니다.");
-                } else {
-                    const message = err instanceof Error ? err.message : "알 수 없는 오류";
-                    setError(message);
-                }
+                if (!res.ok || payload.error) throw new Error(payload.error || `서버 오류: HTTP ${res.status}`);
+                setData(Array.isArray(payload.data) ? payload.data : []);
+            } catch (e: any) {
+                if (e?.name === "AbortError") setError("실행이 중지되었습니다.");
+                else setError(e?.message || "알 수 없는 오류");
             } finally {
                 setLoading(false);
                 abortRef.current = null;
             }
-        };
-        fetchData();
+        })();
 
-        // SQL 변경/언마운트 시 진행 중 요청 취소
-        return () => {
-            abortRef.current?.abort();
-        };
+        return () => abortRef.current?.abort();
     }, [sql]);
 
-    const summary = useMemo(() => {
-        const aliasMap = sql ? buildAliasMap(sql) : undefined;
-        return analyzeDataSummary(data, aliasMap);
-    }, [data, sql]);
+    const aliasMap = useMemo(() => (sql ? buildAliasMap(sql) : undefined), [sql]);
+    const preAgg = useMemo(() => detectPreAggregated(data as any[], aliasMap), [data, aliasMap]);
 
-    const SummaryCards = () => {
+    // ✅ 요약(raw) → 민감컬럼 제거 버전(summary)
+    const rawSummary = useMemo(() => analyzeDataSummary(data, aliasMap), [data, aliasMap]);
+    const summary = useMemo<Record<string, SummaryValue> | null>(() => {
+        if (!rawSummary) return null;
+        const out: any = { ...rawSummary };
+        for (const k of Object.keys(out)) if (isSensitiveIdentifierName(k)) delete out[k];
+        return out;
+    }, [rawSummary]);
+
+    // ✅ 일반 요약에서 사전집계(label,count) 컬럼 제거
+    const preAggKeys = useMemo(() => {
+        const s = new Set<string>();
+        if (preAgg?.labelKey) s.add(preAgg.labelKey);
+        if (preAgg?.countKey) s.add(preAgg.countKey);
+        return s;
+    }, [preAgg]);
+
+    const summaryWithoutPreAgg = useMemo(() => {
         if (!summary) return null;
-        const entries = Object.entries(summary);
+        const out: Record<string, SummaryValue> = {};
+        for (const [k, v] of Object.entries(summary)) {
+            if (!preAggKeys.has(k)) out[k] = v;
+        }
+        return Object.keys(out).length ? out : null;
+    }, [summary, preAggKeys]);
 
-        return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                <div className="border rounded-lg p-4 shadow-sm bg-white">
-                    <h3 className="font-semibold mb-2">총 데이터</h3>
-                    <p>{data.length} 건</p>
-                </div>
+    // ✅ Top-N 사양: 단 한 줄 (사전집계 우선 + 규칙 기반 폴백)
+    const topSpec = useMemo(
+        () => getTopChartSpec(data as any[], { aliasMap, preAgg }),
+        [data, aliasMap, preAgg]
+    );
 
-                {entries.map(([col, info]) => {
-                    const label = translateColumn(col);
-
-                    if ((info as any).type === "numericContinuous") {
-                        const n = info as any;
-                        return (
-                            <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
-                                <h3 className="font-semibold mb-2">{label}</h3>
-                                <p>평균: {n.mean.toFixed(2)}</p>
-                                <p>최소: {n.min}</p>
-                                <p>최대: {n.max}</p>
-                            </div>
-                        );
-                    }
-
-                    if ((info as any).type === "categorical") {
-                        const n = info as any;
-                        const top = Object.entries(n.counts).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 5);
-                        return (
-                            <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
-                                <h3 className="font-semibold mb-2">{label}</h3>
-                                {top.map(([val, count]) => (
-                                    <p key={val}>{val}: {count as number}</p>
-                                ))}
-                            </div>
-                        );
-                    }
-
-                    return null;
-                })}
-            </div>
-        );
-    };
-
-    const Charts = () => {
-        if (!summary) return null;
-        return (
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                {Object.entries(summary).map(([col, info]) => {
-                    const label = translateColumn(col);
-                    if (info.type === "categorical") {
-                        const entries = Object.entries(info.counts);
-                        const sorted = entries.sort((a, b) => b[1] - a[1]);
-                        const labels = sorted.slice(0, 10).map(([v]) => v);
-                        const counts = sorted.slice(0, 10).map(([, c]) => c);
-                        return (
-                            <div key={col} className="p-4 border rounded-lg shadow-sm bg-white">
-                                <h3 className="font-semibold mb-2">{label} (상위 10)</h3>
-                                <div className="h-48">
-                                    <Bar
-                                        data={{
-                                            labels,
-                                            datasets: [
-                                                {
-                                                    label,
-                                                    data: counts,
-                                                    backgroundColor: "rgba(54, 162, 235, 0.5)",
-                                                },
-                                            ],
-                                        }}
-                                        options={{
-                                            responsive: true,
-                                            maintainAspectRatio: false,
-                                            plugins: { legend: { display: false } },
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        );
-                    }
-                    if (info.type === "numericContinuous") {
-                        const histLabels = info.binLabels || info.distribution.map((_, i) => `${i + 1}`);
-                        return (
-                            <div key={col} className="p-4 border rounded-lg shadow_sm bg-white">
-                                <h3 className="font-semibold mb-2">{label} (분포)</h3>
-                                <div className="h-48">
-                                    <Bar
-                                        data={{
-                                            labels: histLabels,
-                                            datasets: [
-                                                {
-                                                    label,
-                                                    data: info.distribution,
-                                                    backgroundColor: "rgba(255, 99, 132, 0.5)",
-                                                },
-                                            ],
-                                        }}
-                                        options={{
-                                            responsive: true,
-                                            maintainAspectRatio: false,
-                                            plugins: { legend: { display: false } },
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        );
-                    }
-                    return null;
-                })}
-            </div>
-        );
-    };
-
-    const columnKeys = data.length > 0 ? Object.keys(data[0]) : [];
+    const columnKeys = data.length > 0 ? Object.keys(data[0] as Record<string, any>) : [];
 
     const handleStop = async () => {
         try {
@@ -228,14 +124,12 @@ export default function CohortResultPage() {
                     ...(auth && { Authorization: `Bearer ${auth}` }),
                 },
             });
-
-        } catch (e) {
-            console.warn("cancel API 호출 실패(무시 가능):", e);
-        } finally {
-            abortRef.current?.abort();   // 즉시 프론트 요청 중지
+        } catch { }
+        finally {
+            abortRef.current?.abort();
             setLoading(false);
-            setData([]);           // 결과 숨김
-            setError("실행이 중지되었습니다."); // 안내문
+            setData([]);
+            setError("실행이 중지되었습니다.");
         }
     };
 
@@ -246,7 +140,6 @@ export default function CohortResultPage() {
                     <BackToAiButton />
                     <h1 className="text-2xl font-bold">🧬 코호트 분석</h1>
                 </div>
-
                 {loading && (
                     <button
                         type="button"
@@ -259,21 +152,97 @@ export default function CohortResultPage() {
                 )}
             </div>
 
-
             {loading && <p className="text-gray-500">데이터 불러오는 중...</p>}
             {error && <p className="text-red-600 font-semibold">{error}</p>}
-
-            {!loading && !error && data.length === 0 && (
-                <p className="text-gray-500">데이터가 없습니다.</p>
-            )}
+            {!loading && !error && data.length === 0 && <p className="text-gray-500">데이터가 없습니다.</p>}
 
             {!loading && !error && data.length > 0 && (
                 <>
-                    <SummaryCards />
+                    {/* 1) 요약 섹션 */}
+                    <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="border rounded-lg p-4 shadow-sm bg-white">
+                            <h3 className="font-semibold mb-2">총 데이터</h3>
+                            <p>{data.length} 건</p>
+                        </div>
+
+                        {summaryWithoutPreAgg &&
+                            Object.entries(summaryWithoutPreAgg).map(([col, info]: any) => {
+                                const label = translateColumn(col);
+                                if (info.type === "numericContinuous") {
+                                    return (
+                                        <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
+                                            <h3 className="font-semibold mb-2">{label}</h3>
+                                            <p>평균: {info.mean.toFixed(2)}</p>
+                                            <p>최소: {info.min}</p>
+                                            <p>최대: {info.max}</p>
+                                        </div>
+                                    );
+                                }
+                                const top5 = Object.entries(info.counts).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5);
+                                const rest = Math.max(0, Object.keys(info.counts).length - 5);
+                                return (
+                                    <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
+                                        <h3 className="font-semibold mb-2">{label}</h3>
+                                        {top5.map(([v, c]) => (
+                                            <p key={v}>{v}: {c as number}</p>
+                                        ))}
+                                        {rest > 0 && <p className="text-gray-500 text-sm">… 외 {rest}개</p>}
+                                    </div>
+                                );
+                            })}
+                    </div>
+
+                    {/* 2) 원본 테이블 */}
                     <div className="mb-6">
                         <DataTable data={data} columns={columnKeys} />
                     </div>
-                    <Charts />
+
+                    {/* 3) 차트 섹션 (사전집계/폴백 TopN + 일반 카테고리 + 연속형 분포) */}
+                    {(summaryWithoutPreAgg || topSpec) && (
+                        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* 사전집계/폴백 Top-N (label,count) */}
+                            {topSpec && (
+                                <TopNByNumericChart
+                                    rows={data as any[]}
+                                    labelCol={topSpec.labelKey}
+                                    valueCol={topSpec.countKey}
+                                    topN={10}
+                                />
+                            )}
+
+                            {/* 일반 요약 기반 차트들: categorical + numericContinuous */}
+                            {summaryWithoutPreAgg &&
+                                Object.entries(summaryWithoutPreAgg).map(([col, info]: any) => {
+                                    const title = translateColumn(col);
+
+                                    // 범주형: TopN + 기타 자동 처리
+                                    if (info.type === "categorical") {
+                                        return (
+                                            <TopNCategoryChart
+                                                key={col}
+                                                title={title}
+                                                counts={info.counts as Record<string, number>}
+                                                topN={10}
+                                            />
+                                        );
+                                    }
+
+                                    // 연속형: 히스토그램(분포)
+                                    if (info.type === "numericContinuous") {
+                                        const labels = info.binLabels || info.distribution.map((_: any, i: number) => `${i + 1}`);
+                                        return (
+                                            <NumericHistogramChart
+                                                key={col}
+                                                title={`${title} (분포)`}
+                                                labels={labels}
+                                                distribution={info.distribution}
+                                            />
+                                        );
+                                    }
+                                    return null;
+                                })}
+                        </div>
+                    )}
                 </>
             )}
         </div>
