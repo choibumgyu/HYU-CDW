@@ -32,6 +32,8 @@ export default function Page() {
             );
             */
             sessionStorage.setItem("token", data.access_token);  //토큰 저장 추가.
+
+            sessionStorage.removeItem("chat_history"); // 로그인 시 챗 기록 삭제
             window.location.href = "/";
         } else {
             alert(data.detail);

@@ -17,6 +17,7 @@ export default function Navbar() {
   const handleLogout = () => {
     sessionStorage.removeItem("token");
     setIsLoggedIn(false);  // 상태 갱신
+    sessionStorage.removeItem("chat_history");  // 로그아웃 시 챗 기록 삭제
     router.push("/");
   };
 
