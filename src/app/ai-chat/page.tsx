@@ -14,6 +14,7 @@ export default function AiChatPage() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null); // 입력창 포커스용 Ref
   const router = useRouter();
 
   // 대화 복원
@@ -67,6 +68,10 @@ export default function AiChatPage() {
     setChatHistory(final);
     sessionStorage.setItem("chat_history", JSON.stringify(final));
     setInput("");
+    if (inputRef.current) {
+      inputRef.current.style.height = "40px";
+      inputRef.current.style.overflowY = "hidden";
+    }
   };
 
   const handleRoute = (target: "analysis" | "cohort-result", sql: string | null | undefined) => {
@@ -85,27 +90,23 @@ export default function AiChatPage() {
       {/* 채팅 영역 */}
       <div className="bg-gray-100 rounded-md p-3 flex-1 min-h-[400px] max-h-[calc(100vh-260px)] overflow-y-auto border">
         {chatHistory.map((chat, idx) => (
-          // ✅ 메시지 아이템: user는 오른쪽, bot은 왼쪽에 "블록 전체"가 붙음
           <div
             key={idx}
             className={`mb-3 flex ${chat.role === "user" ? "justify-end" : "justify-start"}`}
           >
-            {/* 블록 전체(라벨 + 말풍선 + 버튼)를 한 컬럼으로 묶기 */}
             <div className="flex flex-col max-w-[85%]">
-              {/* 라벨: user는 오른쪽 정렬, bot은 왼쪽 정렬 */}
+              {/* 라벨 */}
               <div className={`text-sm font-semibold mb-1 ${chat.role === "user" ? "text-right" : "text-left"}`}>
                 {chat.role === "user" ? "👤 나" : "🤖 GPT"}
               </div>
 
-              {/* 말풍선: 유동 폭 + 내부 텍스트 왼쪽 정렬 */}
+              {/* 말풍선 */}
               <div
-                className={`px-4 py-3 rounded-lg border leading-relaxed inline-block ${
-                  chat.role === "user"
-                    ? "bg-white text-left"
-                    : "bg-blue-50 text-left border-blue-300"
-                }`}
+                className={`px-4 py-3 rounded-lg border leading-relaxed inline-block ${chat.role === "user"
+                  ? "bg-white text-left"
+                  : "bg-blue-50 text-left border-blue-300"
+                  }`}
               >
-                {/* SQL은 monospace로, 오류는 일반 텍스트 */}
                 {chat.role === "bot" && chat.rawSql ? (
                   <div className="whitespace-pre-wrap break-words font-mono text-base leading-relaxed">
                     {chat.message}
@@ -117,9 +118,42 @@ export default function AiChatPage() {
                 )}
               </div>
 
-              {/* 봇 답변에만 버튼 (블록 정렬을 따라 좌/우에 자연스럽게 붙음) */}
+              {/* ✏ 사용자 메시지에만 수정 버튼 추가 */}
+              {chat.role === "user" && (
+                <button
+                  onClick={() => {
+                    setInput(chat.message);
+
+                    // 상태 업데이트 이후 강제로 높이 조절
+                    setTimeout(() => {
+                      if (inputRef.current) {
+                        const target = inputRef.current;
+                        target.style.height = "auto";
+                        const maxHeight = 200;
+
+                        if (target.scrollHeight > maxHeight) {
+                          target.style.height = `${maxHeight}px`;
+                          target.style.overflowY = "auto";
+                        } else {
+                          target.style.height = `${target.scrollHeight}px`;
+                          target.style.overflowY = "hidden";
+                        }
+
+                        target.focus();
+                      }
+                    }, 0);
+                  }}
+
+                  className="mt-1 ml-auto px-2 py-1 bg-yellow-400 hover:bg-yellow-500 text-xs rounded transition-colors"
+                >
+                  ✏ 수정하기
+                </button>
+
+              )}
+
+              {/* 봇 답변 버튼 */}
               {chat.role === "bot" && (
-                <div className={`mt-3 flex gap-3 "justify-start"}`}>
+                <div className="mt-3 flex gap-3">
                   <button
                     onClick={() => handleRoute("analysis", chat.rawSql)}
                     className="px-3 py-1 rounded bg-indigo-600 text-white text-sm"
@@ -141,19 +175,46 @@ export default function AiChatPage() {
       </div>
 
       {/* 입력 폼 */}
-      <form onSubmit={handleSubmit} className="mt-3 flex gap-2">
-        <input
-          type="text"
+      <form onSubmit={handleSubmit} className="mt-3 flex gap-2 items-end">
+        <textarea
+          ref={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+
+            // ✅ 자동 리사이즈
+            const target = e.target as HTMLTextAreaElement;
+            target.style.height = "auto"; // 높이 초기화 후 다시 계산
+            const maxHeight = 200; // 최대 높이 (px 단위)
+
+            // ✅ 최대 높이를 초과하면 스크롤 표시
+            if (target.scrollHeight > maxHeight) {
+              target.style.height = `${maxHeight}px`;
+              target.style.overflowY = "auto"; // 내부 스크롤 활성화
+            } else {
+              target.style.height = `${target.scrollHeight}px`;
+              target.style.overflowY = "hidden"; // 불필요한 스크롤 제거
+            }
+          }}
           placeholder="예: 65세 이상 여성 환자 보여줘"
-          className="flex-1 p-2 border rounded"
+          className="flex-1 p-2 border rounded resize-none leading-relaxed"
+          rows={1}
+          style={{
+            minHeight: "40px",   // 최소 높이
+            maxHeight: "200px",  // 최대 높이 설정
+          }}
         />
-        <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">
+        <button
+          type="submit"
+          className="bg-blue-600 text-white px-4 py-2 rounded h-fit"
+        >
           전송
         </button>
       </form>
 
+
+
+      {/* 대화 초기화 버튼 */}
       <div className="mt-2 flex justify-end">
         <button
           onClick={() => {
@@ -180,6 +241,5 @@ function extractFromCodeBlock(text: string): string | null {
 function extractFromSelect(text: string): string | null {
   const m = text.match(/\bselect\b[\s\S]+/i);
   if (!m) return null;
-  // 두 줄 공백/세미콜론/버튼 라벨에서 컷
   return m[0].split(/\n\n|;|\n📊|\n🧬/)[0].trim();
 }
