@@ -3,12 +3,12 @@
 // ──────────────────────────────
 // 내부 유틸: 이름/값 기반 필터링 규칙
 const ID_NAME_PATTERNS = [
-  /(^|[_\.])(id|identifier|pk)($|_)/i,
-  /_id$/i,
+  /(^|[_\.])(identifier|pk)($|_)/i,
   /_key$/i,
   /source_concept_id$/i,
   /type_concept_id$/i,
 ];
+
 const ID_EXACT_NAMES = new Set([
   "id", "logid", "unique_device_id",
 ]);
@@ -48,21 +48,6 @@ const TEXT_NAME_PATTERNS = [
   /(^|_)(content|description|desc|note|remark|remarks|comment|error_msg|text)($|_)/i,
 ];
 
-// _source_value 정책
-//   - 기본: 전부 제외
-//   - 예외(유지): 아래 화이트리스트
-const ALLOWED_SOURCE_VALUES = new Set([
-  "gender_source_value",
-  "race_source_value",
-  "ethnicity_source_value",
-  "drug_source_value",
-  "condition_source_value",
-  "procedure_source_value",
-  "measurement_source_value",
-  "observation_source_value",
-  "device_source_value",
-  "specimen_source_value",
-]);
 
 // 무조건 제외할 특정 *_source_value
 const FORCE_SKIP_SOURCE_VALUES = new Set([
@@ -81,21 +66,12 @@ function percentile(nums: number[], p: number) {
   return s[lo] * (1 - w) + s[hi] * w;
 }
 
-// --- 유틸 헬퍼 ---
-function isConceptLikeAllowed(name: string): boolean {
-  const n = normalizeName(name);
-  return /_concept_id$/i.test(n) && EXCEPTION_CONCEPT_IDS.has(n);
-}
-function isAllowedSourceValueName(name: string): boolean {
-  const n = normalizeName(name);
-  return /_source_value$/i.test(n) && ALLOWED_SOURCE_VALUES.has(n);
-}
-
 // 값 기반 판정: 날짜처럼 보이는 문자열?
 function looksLikeDateValue(v: unknown): boolean {
   if (v instanceof Date && !isNaN(v.valueOf())) return true;
   if (typeof v !== "string") return false;
   const s = v.trim();
+  if (/^\d{4}$/.test(s)) return false;              // 연도 단독은 제외
   if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(s)) return true; // 2025-08-05 / 2025/08/05
   if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return true; // ISO 8601
   return false;
@@ -115,13 +91,46 @@ function looksLikeLongText(values: unknown[]): boolean {
 // 값 기반 판정: ID처럼 보이는 정수 & 높은 고유비율
 function looksLikeIdByStats(values: unknown[]): boolean {
   const filtered = values.filter(v => v != null);
-  if (filtered.length === 0) return false;
-  const nums = filtered.filter(v => typeof v === "number" && Number.isFinite(v)) as number[];
-  if (nums.length === 0) return false;
-  const intRatio = nums.filter(n => Number.isInteger(n)).length / nums.length;
-  const uniqueRatio = new Set(filtered.map(v => String(v))).size / filtered.length;
-  return intRatio > 0.95 && uniqueRatio > 0.8;
+  if (!filtered.length) return false;
+
+  const strings = filtered.map(v => String(v).trim());
+
+  // R1) 자릿수 많은 숫자 형태(예: 6자리 이상) 비중이 높으면 ID로 간주 (샘플 적어도 적용)
+  const longDigitRatio = strings.filter(s => /^\d{6,}$/.test(s)).length / strings.length;
+  if (longDigitRatio >= 0.8) return true;
+
+  // 숫자 변환
+  const asNum = strings
+    .map(s => Number(s))
+    .filter(n => typeof n === "number" && Number.isFinite(n)) as number[];
+
+  if (!asNum.length) return false;
+
+  // R2) 소표본 완화: n>=20이면 완화된 기준 적용, n>=100이면 기존의 엄격 기준
+  const n = asNum.length;
+  const intRatio = asNum.filter(n => Number.isInteger(n)).length / n;
+  const uniqRatio = new Set(strings).size / strings.length;
+
+  if (n >= 100) {
+    // 기존 엄격 기준
+    if (intRatio >= 0.98 && uniqRatio >= 0.98) return true;
+  } else if (n >= 20) {
+    // 완화 기준
+    if (intRatio >= 0.9 && uniqRatio >= 0.9) return true;
+  }
+
+  // R3) 값 범위가 지나치게 넓은 정수(연속형 분포 아님)도 ID로 의심
+  if (n >= 20 && intRatio >= 0.95) {
+    const min = Math.min(...asNum);
+    const max = Math.max(...asNum);
+    const range = max - min;
+    // 범위가 표본 수 대비 너무 커서 카운트/측정치라 보기 어려운 경우
+    if (range > n * 50) return true;
+  }
+
+  return false;
 }
+
 
 function normalizeName(name: string): string {
   return name.replace(/\[|\]/g, "").trim().toLowerCase();
@@ -129,29 +138,19 @@ function normalizeName(name: string): string {
 
 // 이름 기반 스킵 규칙
 function shouldSkipByName(normalizedName: string): boolean {
-  // concept_id: 예외만 허용, 나머지는 이름기반으로 스킵
-  if (/_concept_id$/i.test(normalizedName) && !EXCEPTION_CONCEPT_IDS.has(normalizedName)) {
-    return true;
-  }
-
-  // 민감 식별자(등록번호/MRN/차트번호 등) 우선 차단
+  // 민감 패턴만 차단
   if (SENSITIVE_NAME_PATTERNS.some(rx => rx.test(normalizedName))) return true;
 
-  // 일반적인 *_id / *_key
-  if (ID_EXACT_NAMES.has(normalizedName)) return true;
-  if (ID_NAME_PATTERNS.some(rx => rx.test(normalizedName))) return true;
+  // 강제 블랙리스트 source_value만 차단
+  if (FORCE_SKIP_SOURCE_VALUES.has(normalizedName)) return true;
 
-  // 날짜/장문 텍스트
+  // 날짜/텍스트
   if (DATE_NAME_PATTERNS.some(rx => rx.test(normalizedName))) return true;
   if (TEXT_NAME_PATTERNS.some(rx => rx.test(normalizedName))) return true;
 
-  // *_source_value 정책: 허용 셋만 통과
-  if (/_source_value$/i.test(normalizedName) && !ALLOWED_SOURCE_VALUES.has(normalizedName)) {
-    return true;
-  }
-
   return false;
 }
+
 
 // ──────────────────────────────
 // 공개 API
@@ -192,7 +191,8 @@ export function filterValidColumns(data: any[]): string[] {
 
   const noMissing = cols.filter(c => {
     const miss = data.filter(r => r[c] == null).length;
-    return miss / n < 0.5;
+    // 기존: miss / n < 0.5
+    return miss / n < 0.8; // 결측 허용률 완화
   });
   const noUniform = noMissing.filter(c => new Set(data.map(r => r[c])).size > 1);
   return noUniform;
@@ -224,19 +224,21 @@ export function analyzeDataSummary(
     const conceptAllowed =
       /_concept_id$/i.test(originalName) && EXCEPTION_CONCEPT_IDS.has(originalName);
     const sourceAllowed =
-      /_source_value$/i.test(originalName) && ALLOWED_SOURCE_VALUES.has(originalName);
+      /_source_value$/i.test(originalName) && !FORCE_SKIP_SOURCE_VALUES.has(originalName);
 
     // 2) 값 기반 스킵
-    if (values.some(looksLikeDateValue)) continue;
+    const dateLikeRatio = values.filter(looksLikeDateValue).length / Math.max(values.length, 1);
+    if (dateLikeRatio >= 0.7) continue; // 70% 이상이 날짜처럼 보일 때만 제외
     if (looksLikeLongText(values)) continue;
 
     // 👉 개념/소스 컬럼은 ID-통계 기반 필터 예외 (분포 보려고 허용)
     if (!conceptAllowed && !sourceAllowed && looksLikeIdByStats(values)) continue;
 
     // 3) 통계 분류
-    const numericValues = values.filter(
-      v => typeof v === "number" && Number.isFinite(v as number)
-    ) as number[];
+    const coerceNum = (v: any) => (typeof v === "number" ? v : (typeof v === "string" ? Number(v.trim()) : NaN));
+    const numericValues = values
+      .map(coerceNum)
+      .filter((n) => Number.isFinite(n)) as number[];
 
     if (numericValues.length > 0) {
       const uniqueSize = new Set(numericValues).size;
@@ -304,32 +306,29 @@ export function analyzeDataSummary(
   return result;
 }
 
-  // ──────────────────────────────
-  // 외부에서 재사용할 헬퍼들
+// ──────────────────────────────
+// 외부에서 재사용할 헬퍼들
 
-  export function _normalizeName_forPublic(name: string): string {
-    return normalizeName(name);
-  }
+export function _normalizeName_forPublic(name: string): string {
+  return normalizeName(name);
+}
 
-  export function shouldHideColumnByName(name: string): boolean {
-    return shouldSkipByName(normalizeName(name));
-  }
+export function shouldHideColumnByName(name: string): boolean {
+  return shouldSkipByName(normalizeName(name));
+}
 
-  // 사전집계/차트 등에서 바로 쓸 수 있게: 민감 식별자 이름 감지
-  export function isSensitiveIdentifierName(name: string): boolean {
-    const n = normalizeName(name);
+// 사전집계/차트 등에서 바로 쓸 수 있게: 민감 식별자 이름 감지
+export function isSensitiveIdentifierName(name: string): boolean {
+  const n = normalizeName(name);
 
-    // concept_id 처리: 기본은 민감(숨김), 예외만 허용
-    if (/_concept_id$/i.test(n)) {
-      return !EXCEPTION_CONCEPT_IDS.has(n);
-    }
+  // concept_id는 차단 안 함 (예외 목록 유지할 필요 없음)
+  if (/_concept_id$/i.test(n)) return false;
 
-    // 민감 식별자 패턴
-    if (SENSITIVE_NAME_PATTERNS.some(rx => rx.test(n))) return true;
+  // 민감 패턴
+  if (SENSITIVE_NAME_PATTERNS.some(rx => rx.test(n))) return true;
 
-    // 일반 ID 패턴
-    if (ID_EXACT_NAMES.has(n)) return true;
-    if (ID_NAME_PATTERNS.some(rx => rx.test(n))) return true;
+  // 블랙리스트 ID만 차단
+  if (ID_EXACT_NAMES.has(n)) return true;
 
-    return false;
-  }
+  return false;
+}

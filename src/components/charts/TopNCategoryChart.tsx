@@ -66,6 +66,7 @@ export function TopNCategoryChart({
         plugins: { legend: { display: false } },
         scales: {
             y: {
+                suggestedMax: Math.max(1, maxY ?? 0),
                 beginAtZero: true,
                 max: maxY > 0 ? maxY : undefined, // ✅ y축을 상위 N 기준으로 고정
                 ticks: {

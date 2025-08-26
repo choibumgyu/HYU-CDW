@@ -4,10 +4,10 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import DataTable from "@/components/charts/DataTable";
 import BackToAiButton from "@/components/ui/BackToAiButton";
 import { translateColumn } from "@/utils/translate";
-import { analyzeDataSummary, isSensitiveIdentifierName } from "@/utils/analyzeData";
+import { analyzeDataSummary, isSensitiveIdentifierName, shouldHideColumnByName } from "@/utils/analyzeData";
 import { buildAliasMap } from "@/utils/sqlAliasMap";
 import { detectPreAggregated } from "@/utils/detectPreAggregated";
-import { getTopChartSpec } from "@/utils/chartRules";
+import { getTopChartSpec, looksCountName } from "@/utils/chartRules";
 
 import NumericHistogramChart from "@/components/charts/NumericHistogramChart";
 import { TopNCategoryChart } from "@/components/charts/TopNCategoryChart";
@@ -77,11 +77,34 @@ export default function CohortResultPage() {
         return () => abortRef.current?.abort();
     }, [sql]);
 
+
     const aliasMap = useMemo(() => (sql ? buildAliasMap(sql) : undefined), [sql]);
-    const preAgg = useMemo(() => detectPreAggregated(data as any[], aliasMap), [data, aliasMap]);
+
+    const getDisplayName = (sourceKey: string) => {
+        // aliasMap: alias -> source
+        // 원본키 → 별칭(있으면) 역탐색해서, 번역 함수에 넣어도 되고
+        const alias = Object.entries(aliasMap ?? {}).find(([, src]) => src === sourceKey)?.[0];
+        // 1) 별칭이 있으면 별칭을 번역, 2) 없으면 원본키를 번역
+        return translateColumn(alias ?? sourceKey);
+    };
+
+    // NEW: alias를 원본키로 되돌린 데이터
+    const normalizedData = useMemo(() => {
+        if (!data?.length) return [];
+        return data.map(row => {
+            const out: Record<string, any> = {};
+            for (const k of Object.keys(row)) {
+                const sourceKey = aliasMap?.[k] ?? k;   // ← 별칭이면 원본으로 되돌림
+                out[sourceKey] = (row as any)[k];
+            }
+            return out;
+        });
+    }, [data, aliasMap]);
+
+    const preAgg = useMemo(() => detectPreAggregated(normalizedData as any[], aliasMap), [normalizedData, aliasMap]);
 
     // ✅ 요약(raw) → 민감컬럼 제거 버전(summary)
-    const rawSummary = useMemo(() => analyzeDataSummary(data, aliasMap), [data, aliasMap]);
+    const rawSummary = useMemo(() => analyzeDataSummary(normalizedData, aliasMap), [normalizedData, aliasMap]);
     const summary = useMemo<Record<string, SummaryValue> | null>(() => {
         if (!rawSummary) return null;
         const out: any = { ...rawSummary };
@@ -89,30 +112,113 @@ export default function CohortResultPage() {
         return out;
     }, [rawSummary]);
 
+
+    const rawTopSpec = useMemo(
+        () => getTopChartSpec(normalizedData as any[], { aliasMap, preAgg }),
+        [normalizedData, aliasMap, preAgg]
+    );
+
+    // ✅ Top-N 사양: 단 한 줄 (사전집계 우선 + 규칙 기반 폴백)
+    const topSpec = useMemo(() => {
+        if (!rawTopSpec) return null;
+        const { labelKey, countKey } = rawTopSpec;
+        if (shouldHideColumnByName(labelKey) || isSensitiveIdentifierName(labelKey)) return null;
+        return rawTopSpec;
+    }, [rawTopSpec]);
+
+    const topSummary = useMemo(() => {
+        if (!topSpec || !normalizedData?.length) return null;
+
+        const labelCol = topSpec.labelKey;
+        const valueCol = topSpec.countKey;
+
+        // label/value가 유효한 행만
+        const valid = (normalizedData as any[]).filter(
+            r => r[labelCol] != null && Number.isFinite(Number(r[valueCol]))
+        );
+
+        // 동일 라벨 합산
+        const agg = new Map<string, number>();
+        for (const r of valid) {
+            const k = String(r[labelCol]);
+            const v = Number(r[valueCol]);
+            agg.set(k, (agg.get(k) || 0) + v);
+        }
+
+        const entries = [...agg.entries()].sort((a, b) => b[1] - a[1]);
+        const topN = 10; // 카드에서도 10 기준(필요시 공통 상수로)
+        const topEntries = entries.slice(0, topN);
+        const otherEntries = entries.slice(topN);
+
+        const sum = (arr: [string, number][]) => arr.reduce((s, [, v]) => s + v, 0);
+        const topSum = sum(topEntries);
+        const otherSum = sum(otherEntries);
+        const total = sum(entries);
+
+        return {
+            title: `${getDisplayName(labelCol)}별 ${getDisplayName(valueCol)}`,
+            topEntries,
+            otherEntries,
+            topSum,
+            otherSum,
+            total,
+            topN,
+            allCount: entries.length,
+        };
+    }, [topSpec, normalizedData]);
+
     // ✅ 일반 요약에서 사전집계(label,count) 컬럼 제거
     const preAggKeys = useMemo(() => {
         const s = new Set<string>();
-        if (preAgg?.labelKey) s.add(preAgg.labelKey);
-        if (preAgg?.countKey) s.add(preAgg.countKey);
+        if (topSpec?.countKey) s.add(topSpec.countKey);
+        if (topSpec?.labelKey) s.add(topSpec.labelKey);
         return s;
-    }, [preAgg]);
+    }, [topSpec]);
 
     const summaryWithoutPreAgg = useMemo(() => {
         if (!summary) return null;
         const out: Record<string, SummaryValue> = {};
         for (const [k, v] of Object.entries(summary)) {
-            if (!preAggKeys.has(k)) out[k] = v;
+            if (shouldHideColumnByName(k) || isSensitiveIdentifierName(k)) continue;
+            if (preAggKeys.has(k)) continue;
+
+            // ✅ count-like 이름이면(별칭/키 기준) 요약에서 제외
+            const displayName = aliasMap?.[k] ?? k;
+            if (looksCountName(displayName)) continue;
+
+            // ✅ 범주형인데 값이 전부 1(=의미 없는 분포)이면 제외
+            if ((v as any)?.type === "categorical") {
+                const vals = Object.values((v as any).counts || {}) as number[];
+                if (vals.length && Math.max(...vals) <= 1) continue;
+            }
+
+            out[k] = v;
         }
         return Object.keys(out).length ? out : null;
-    }, [summary, preAggKeys]);
+    }, [summary, preAggKeys, aliasMap]);
 
-    // ✅ Top-N 사양: 단 한 줄 (사전집계 우선 + 규칙 기반 폴백)
-    const topSpec = useMemo(
-        () => getTopChartSpec(data as any[], { aliasMap, preAgg }),
-        [data, aliasMap, preAgg]
-    );
 
-    const columnKeys = data.length > 0 ? Object.keys(data[0] as Record<string, any>) : [];
+    const hasCategoricalInSummary = useMemo(() => {
+        if (!summaryWithoutPreAgg) return false;
+        return Object.values(summaryWithoutPreAgg).some((v: any) => v?.type === "categorical");
+    }, [summaryWithoutPreAgg]);
+
+    const fallbackCat = useMemo(() => {
+        if (!summaryWithoutPreAgg) return null;
+        // 카디널리티 2~100 사이의 범주형 중에서 하나 선택 (원하는 기준으로 정렬 가능)
+        const cats = Object.entries(summaryWithoutPreAgg)
+            .filter(([, v]: any) => v?.type === "categorical")
+            .map(([k, v]: any) => ({ key: k, counts: v.counts, card: Object.keys(v.counts ?? {}).length }))
+            .filter(x => x.card >= 2 && x.card <= 100)
+            .sort((a, b) => b.card - a.card); // 예: 카드inality 큰 순
+        return cats[0] ?? null;
+    }, [summaryWithoutPreAgg]);
+
+    const columnKeys = useMemo(() => {
+        const set = new Set<string>();
+        for (const r of data as RowData[]) Object.keys(r || {}).forEach(k => set.add(k));
+        return Array.from(set);
+    }, [data]);
 
     const handleStop = async () => {
         try {
@@ -160,6 +266,7 @@ export default function CohortResultPage() {
                 <>
                     {/* 1) 요약 섹션 */}
                     <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {/* 총 데이터 */}
                         <div className="border rounded-lg p-4 shadow-sm bg-white">
                             <h3 className="font-semibold mb-2">총 데이터</h3>
                             <p>{data.length} 건</p>
@@ -167,7 +274,7 @@ export default function CohortResultPage() {
 
                         {summaryWithoutPreAgg &&
                             Object.entries(summaryWithoutPreAgg).map(([col, info]: any) => {
-                                const label = translateColumn(col);
+                                const label = getDisplayName(col);
                                 if (info.type === "numericContinuous") {
                                     return (
                                         <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
@@ -183,13 +290,23 @@ export default function CohortResultPage() {
                                 return (
                                     <div key={col} className="border rounded-lg p-4 shadow-sm bg-white">
                                         <h3 className="font-semibold mb-2">{label}</h3>
-                                        {top5.map(([v, c]) => (
-                                            <p key={v}>{v}: {c as number}</p>
-                                        ))}
+                                        {top5.map(([v, c]) => (<p key={v}>{v}: {c as number}</p>))}
                                         {rest > 0 && <p className="text-gray-500 text-sm">… 외 {rest}개</p>}
                                     </div>
                                 );
                             })}
+
+                        {topSummary && (
+                            <div className="border rounded-lg p-4 shadow-sm bg-white">
+                                <h3 className="font-semibold mb-2">{topSummary.title}</h3>
+                                {topSummary.topEntries.slice(0, 5).map(([label, cnt]) => (
+                                    <p key={label}>{label}: {cnt.toLocaleString()}</p>
+                                ))}
+                                {topSummary.topEntries.length > 5 && (
+                                    <p className="text-gray-500 text-sm">… 외 {Math.max(0, topSummary.allCount - 5)}개</p>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* 2) 원본 테이블 */}
@@ -197,25 +314,26 @@ export default function CohortResultPage() {
                         <DataTable data={data} columns={columnKeys} />
                     </div>
 
-                    {/* 3) 차트 섹션 (사전집계/폴백 TopN + 일반 카테고리 + 연속형 분포) */}
-                    {(summaryWithoutPreAgg || topSpec) && (
+                    {(summaryWithoutPreAgg || topSpec || fallbackCat) && (
                         <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* 사전집계/폴백 Top-N (label,count) */}
+                            {/* 1) 사전집계 TopN: 있으면 항상 표시 */}
                             {topSpec && (
                                 <TopNByNumericChart
-                                    rows={data as any[]}
+                                    rows={normalizedData as any[]}
                                     labelCol={topSpec.labelKey}
                                     valueCol={topSpec.countKey}
+                                    labelDisplay={getDisplayName(topSpec.labelKey)}
+                                    valueDisplay={getDisplayName(topSpec.countKey)}
                                     topN={10}
                                 />
                             )}
 
-                            {/* 일반 요약 기반 차트들: categorical + numericContinuous */}
+                            {/* 2) 요약 기반 차트들: categorical + numericContinuous 전부 렌더 */}
                             {summaryWithoutPreAgg &&
                                 Object.entries(summaryWithoutPreAgg).map(([col, info]: any) => {
-                                    const title = translateColumn(col);
+                                    if (shouldHideColumnByName(col) || isSensitiveIdentifierName(col)) return null;
+                                    const title = getDisplayName(col);
 
-                                    // 범주형: TopN + 기타 자동 처리
                                     if (info.type === "categorical") {
                                         return (
                                             <TopNCategoryChart
@@ -227,7 +345,6 @@ export default function CohortResultPage() {
                                         );
                                     }
 
-                                    // 연속형: 히스토그램(분포)
                                     if (info.type === "numericContinuous") {
                                         const labels = info.binLabels || info.distribution.map((_: any, i: number) => `${i + 1}`);
                                         return (
@@ -241,6 +358,15 @@ export default function CohortResultPage() {
                                     }
                                     return null;
                                 })}
+
+                            {/* 3) 폴백: 요약에 범주형이 아예 없을 때만 1장 그리기 */}
+                            {!hasCategoricalInSummary && !topSpec && fallbackCat && (
+                                <TopNCategoryChart
+                                    title={getDisplayName(fallbackCat.key)}  // 번역 일관
+                                    counts={fallbackCat.counts}
+                                    topN={10}
+                                />
+                            )}
                         </div>
                     )}
                 </>

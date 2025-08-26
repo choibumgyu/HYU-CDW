@@ -8,50 +8,48 @@ import { shouldHideColumnByName, isSensitiveIdentifierName } from "@/utils/analy
 import { ensureChartJsRegistered } from '@/components/charts/setupChartJs';
 ensureChartJsRegistered();
 
+
 // ID 처럼 보이는지 값 분포로 판별 (정수비율↑, 고유비율↑ 등)
 function looksLikeIdByStats(values: unknown[]): boolean {
     const filtered = values.filter(v => v != null);
-    if (!filtered.length) return false;
-
-    const asNum = filtered
-        .map(v => (typeof v === "string" ? Number(v) : v))
+    if (filtered.length < 100) return false; // 표본 작으면 차단 안함
+    const asNum = filtered.map(v => (typeof v === "string" ? Number(v) : v))
         .filter(v => typeof v === "number" && Number.isFinite(v)) as number[];
-
-    if (asNum.length) {
-        const intRatio = asNum.filter(n => Number.isInteger(n)).length / asNum.length;
-        const uniqRatio = new Set(filtered.map(v => String(v))).size / filtered.length;
-        if (intRatio > 0.95 && uniqRatio > 0.8) return true;
-    }
-
-    const strings = filtered.map(v => String(v));
-    const avgLen = strings.reduce((s, t) => s + t.length, 0) / strings.length;
-    const uniqRatio = new Set(strings).size / strings.length;
-    if (avgLen >= 6 && uniqRatio > 0.8) return true;
-
-    return false;
+    if (!asNum.length) return false;
+    const intRatio = asNum.filter(n => Number.isInteger(n)).length / asNum.length;
+    const uniqRatio = new Set(filtered.map(v => String(v))).size / filtered.length;
+    return intRatio >= 0.98 && uniqRatio >= 0.98; // 더 보수적으로
 }
 
 export function TopNByNumericChart({
-    rows, labelCol, valueCol, topN = 10,
+    rows, labelCol, valueCol, topN = 10, labelDisplay, valueDisplay,
 }: {
     rows: Record<string, any>[];
     labelCol: string;
     valueCol: string;
     topN?: number;
+    labelDisplay?: string;
+    valueDisplay?: string;
 }) {
-    // ✅ 이름 기반 가드: 라벨/값 모두 검사
-    if (shouldHideColumnByName(labelCol) || isSensitiveIdentifierName(labelCol)) return null;
-    if (shouldHideColumnByName(valueCol) || isSensitiveIdentifierName(valueCol)) return null;
+
+    const labelHide = shouldHideColumnByName(labelCol) || isSensitiveIdentifierName(labelCol);
+    const valueHide = shouldHideColumnByName(valueCol) || isSensitiveIdentifierName(valueCol);
+
+    // concept_id 라벨은 강제 허용 (drug_concept_id 같은 케이스)
+    const labelIsConceptId = /_concept_id$/i.test(labelCol);
+    if (!labelIsConceptId && (labelHide || valueHide)) {
+        return null;
+    }
 
     const [mode, setMode] = useState<"top" | "others">("top");
 
     const {
         chartLabels, chartValues, title,
         topEntries, otherEntries, topSum, otherSum, total,
-        blockedByValueGuard,
+        blockedByValueGuard, maxTop,
     } = useMemo(() => {
-        const labelName = translateColumn(labelCol);
-        const valueName = translateColumn(valueCol);
+        const labelName = labelDisplay ?? translateColumn(labelCol);
+        const valueName = valueDisplay ?? translateColumn(valueCol);
 
         const valid = rows.filter(
             r => r[labelCol] != null && Number.isFinite(Number(r[valueCol]))
@@ -59,13 +57,7 @@ export function TopNByNumericChart({
 
         // ✅ 값 컬럼 분포 가드 (등록번호 같이 유니크/정수 위주면 차트 금지)
         const blockedByValueGuard = looksLikeIdByStats(valid.map(r => r[valueCol]));
-        // 라벨 값도 한 번 더 체크(안전)
-        if (looksLikeIdByStats(valid.map(r => r[labelCol]))) {
-            return {
-                chartLabels: [], chartValues: [], title: "", topEntries: [], otherEntries: [],
-                topSum: 0, otherSum: 0, total: 0, blockedByValueGuard: true
-            };
-        }
+
 
         // 동일 라벨 합산
         const agg = new Map<string, number>();
@@ -84,30 +76,24 @@ export function TopNByNumericChart({
         const topSum = topEntries.reduce((s, [, v]) => s + v, 0);
         const otherSum = otherEntries.reduce((s, [, v]) => s + v, 0);
 
-        let chartLabels: string[] = [];
-        let chartValues: number[] = [];
+        // ✅ TopN의 최대값 (Y축 고정을 위해)
+        const maxTop = topEntries.length ? Math.max(...topEntries.map(([, v]) => v)) : 0;
 
-        if (entries.length <= 10) {
-            chartLabels = entries.map(([k]) => k);
-            chartValues = entries.map(([, v]) => v);
-        } else if (entries.length < 50) {
-            chartLabels = [...topEntries.map(([k]) => k), "기타"];
-            chartValues = [...topEntries.map(([, v]) => v), otherSum];
-        } else {
-            chartLabels = topEntries.map(([k]) => k);
-            chartValues = topEntries.map(([, v]) => v);
-        }
+        // 교체: mode에 따라 TopN 또는 기타 상위 N 미리보기
+        const displayEntries = mode === "top" ? topEntries : otherEntries.slice(0, topN);
+        const chartLabels = displayEntries.map(([k]) => k);
+        const chartValues = displayEntries.map(([, v]) => v);
 
         return {
             chartLabels, chartValues, title,
             topEntries, otherEntries, topSum, otherSum, total,
-            blockedByValueGuard,
+            blockedByValueGuard, maxTop,
         };
-    }, [rows, labelCol, valueCol, topN]);
+    }, [rows, labelCol, valueCol, topN, mode]);
 
     if (!chartLabels.length || blockedByValueGuard) return null;
 
-    const bg = chartLabels.map(v => (v === "기타" ? "rgba(156,163,175,0.7)" : "rgba(54,162,235,0.5)"));
+    const bg = chartLabels.map(() => "rgba(54,162,235,0.5)");
     const coverage = total ? (topSum / total) * 100 : 0;
     const othersPct = total ? (otherSum / total) * 100 : 0;
 
@@ -117,7 +103,19 @@ export function TopNByNumericChart({
             <div className="h-48">
                 <Bar
                     data={{ labels: chartLabels, datasets: [{ label: title, data: chartValues, backgroundColor: bg }] }}
-                    options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+                    options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                // ✅ TopN 최대값 기준으로 고정 (전부 0이면 최소 1)
+                                suggestedMax: Math.max(1, maxTop ?? 0),
+                                ticks: { callback: (v) => Number(v).toLocaleString() },
+                            },
+                        },
+                    }}
                 />
             </div>
             {otherEntries.length > 0 && (
