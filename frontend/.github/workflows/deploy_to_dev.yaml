@@ -1,0 +1,31 @@
+name: Deploy to Dev
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Docker Image"]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: self-hosted
+
+    steps:
+      - name: Create .env file
+        run: echo "${{ secrets.ENV_FILE }}" > ${{ secrets.DOCKER_IMAGE_NAME }}.env
+
+      - name: Pull and Run Container
+        run: |
+          IMAGE=${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_IMAGE_NAME }}:${{ secrets.DOCKER_TAG || 'latest' }}
+          CONTAINER_NAME=frontend-app-container
+
+          docker stop $CONTAINER_NAME || true
+          docker rm $CONTAINER_NAME || true
+          docker pull $IMAGE
+
+          docker run --env-file ${{ secrets.DOCKER_IMAGE_NAME }}.env \
+            -d --restart always --name $CONTAINER_NAME -p 3000:3000 $IMAGE
+
+      - name: Remove .env file
+        run: rm ${{ secrets.DOCKER_IMAGE_NAME }}.env

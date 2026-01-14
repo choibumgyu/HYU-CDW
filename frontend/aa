@@ -1,0 +1,50 @@
+[33mcommit 61e8c856967f075cfb12fb2900e2157d8ec4ae79[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32m4-feat-데이터-시각화-프런트엔드-연동[m[33m, [m[1;31morigin/4-feat-데이터-시각화-프런트엔드-연동[m[33m)[m
+Author: jws909 <jws090909@gmail.com>
+Date:   Tue Apr 1 14:04:57 2025 +0900
+
+    feat: 데이터 시각화 프런트엔드 연동
+
+[33mcommit ff386cf912497cd11f150dfaf9b2e7bd49fb7edb[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/develop[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m
+Author: Minjae Joo <63098401+raipier8818@users.noreply.github.com>
+Date:   Wed Mar 26 02:00:07 2025 +0900
+
+    chore: fix container name
+
+[33mcommit 15b50fd4fedec12d2628e547a15690819e40eae9[m
+Author: Minjae Joo <63098401+raipier8818@users.noreply.github.com>
+Date:   Wed Mar 26 01:57:35 2025 +0900
+
+    chore update port deploy_to_dev
+
+[33mcommit 0996ba40f3817001bcc8e0694cf93a93750cba19[m
+Merge: 546f846 7ec3a00
+Author: Minjae Joo <63098401+raipier8818@users.noreply.github.com>
+Date:   Tue Mar 25 23:32:19 2025 +0900
+
+    Merge pull request #2 from HYU-Capstone2025-LLM-CDW/1-chore-on-premise-deploy-workflow
+    
+    1 chore on premise deploy workflow
+
+[33mcommit 7ec3a00e98d811bf3d7ac241e3afcbe1139add22[m[33m ([m[1;31morigin/1-chore-on-premise-deploy-workflow[m[33m)[m
+Author: joominjae <raipier8818@gmail.com>
+Date:   Tue Mar 25 23:31:55 2025 +0900
+
+    [chore] on premise deploy workflow
+
+[33mcommit 58323713c0bc08885525009ea34e50d009dc198c[m
+Author: joominjae <raipier8818@gmail.com>
+Date:   Tue Mar 25 23:31:39 2025 +0900
+
+    [chore] dockerfile
+
+[33mcommit 546f846fd11d7bf15931cbc60f8db4cc69324538[m
+Author: jws909 <jws090909@gmail.com>
+Date:   Tue Mar 25 20:13:08 2025 +0900
+
+    Initial commit: migrate local frontend code
+
+[33mcommit 9ed98fbdfa875b86d7834021e8c3c13f4ae660c3[m
+Author: jws909 <jws090909@gmail.com>
+Date:   Thu Mar 6 17:56:44 2025 +0900
+
+    Initial commit from Create Next App
