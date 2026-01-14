@@ -1,0 +1,54 @@
+services:
+  # PostgreSQL Database Service (using official image)
+  postgres:
+    image: postgres:15 # 특정 버전 사용 권장 (예: 15 또는 16)
+    container_name: postgres-container
+    environment:
+      # These variables are used by the official Postgres image
+      # to initialize the DB if it's empty
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Named volume for data persistence
+      - ./postgres-init:/docker-entrypoint-initdb.d # Custom initialization scripts
+    ports:
+      - "5433:5432" # Optional: Map host port for external access/debug
+    networks:
+      - omop-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s # Give some time for the DB to start before checking
+
+  # FastAPI Backend Service (using your modified Dockerfile)
+  fastapi:
+    build:
+      context: . # Build from the Dockerfile in the current directory
+      # dockerfile: Dockerfile # Explicitly specify if needed
+    container_name: fastapi-container
+    ports:
+      - "8000:8000"
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      DATABASE_URL: ${DATABASE_URL}
+      # Pass individual components if needed by entrypoint script or alembic
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    networks:
+      - omop-network
+    depends_on:
+      postgres:
+        condition: service_healthy # Wait for db's healthcheck to pass
+
+volumes:
+  postgres_data: # Define the named volume
+
+networks:
+  omop-network: # Define the custom network
+    driver: bridge

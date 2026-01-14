@@ -1,0 +1,17 @@
+*.pem
+venv
+.DS_Store
+*.pyc
+__pycache__/
+.env
+.env.*
+*.pyo
+*.pyd
+*.log
+*.db
+.git
+.gitignore
+tests/
+query_example.md
+query_index.faiss
+sql_example.md
